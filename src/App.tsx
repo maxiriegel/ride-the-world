@@ -9,7 +9,7 @@ import type {
 } from './types/adventure';
 import { FloatingTopBar, type ActiveFilters } from './components/bar/FloatingTopBar';
 import { DiscoveryDock } from './components/dock/DiscoveryDock';
-import { TopoMap } from './components/map/TopoMap';
+import { TopoMap, type MapThemeMode } from './components/map/TopoMap';
 import { AdventureSheet } from './components/sheet/AdventureSheet';
 import { resolvePublicUrl } from './utils/publicUrl';
 
@@ -28,9 +28,10 @@ function readInitialUrlState(): {
   mode: FilterMode;
   tourSlug: string | null;
   stageNum: number | null;
+  mapTheme: MapThemeMode;
 } {
   if (typeof window === 'undefined') {
-    return { mode: 'all', tourSlug: null, stageNum: null };
+    return { mode: 'all', tourSlug: null, stageNum: null, mapTheme: 'hybrid' };
   }
   const params = new URLSearchParams(window.location.search);
   const rawMode = params.get('mode');
@@ -40,10 +41,13 @@ function readInitialUrlState(): {
       : rawMode === 'winter' || rawMode === 'ski'
         ? 'winter'
         : 'all';
+  const rawMap = params.get('map');
+  const mapTheme: MapThemeMode =
+    rawMap === 'topo' ? 'topo' : rawMap === 'night' ? 'night' : 'hybrid';
   const tourSlug = params.get('tour');
   const rawStage = params.get('stage');
   const stageNum = rawStage ? Number(rawStage) || null : null;
-  return { mode, tourSlug, stageNum };
+  return { mode, tourSlug, stageNum, mapTheme };
 }
 
 export const App: React.FC = () => {
@@ -53,6 +57,7 @@ export const App: React.FC = () => {
     ...DEFAULT_FILTERS,
     mode: initial.mode,
   }));
+  const [mapTheme, setMapTheme] = useState<MapThemeMode>(initial.mapTheme);
   const [selectedAdventure, setSelectedAdventure] = useState<Adventure | null>(() =>
     initial.tourSlug ? ADVENTURES.find((a) => a.slug === initial.tourSlug) ?? null : null
   );
@@ -78,7 +83,7 @@ export const App: React.FC = () => {
 
   const activeTrack = targetTrackUrl ? trackMap[targetTrackUrl] ?? null : null;
 
-  // Sync season attribute on <html> for CSS Liquid Glass & token theming
+  // Sync season & mapTheme attributes on <html> for adaptive Liquid Glass & ink tokens
   useEffect(() => {
     if (filters.mode === 'all') {
       delete document.documentElement.dataset.season;
@@ -87,12 +92,19 @@ export const App: React.FC = () => {
     }
   }, [filters.mode]);
 
+  useEffect(() => {
+    document.documentElement.dataset.mapTheme = mapTheme;
+  }, [mapTheme]);
+
   // Sync URL query params cleanly for shareable deep-links
   useEffect(() => {
     const url = new URL(window.location.href);
     if (filters.mode === 'summer') url.searchParams.set('mode', 'bike');
     else if (filters.mode === 'winter') url.searchParams.set('mode', 'ski');
     else url.searchParams.delete('mode');
+
+    if (mapTheme !== 'hybrid') url.searchParams.set('map', mapTheme);
+    else url.searchParams.delete('map');
 
     if (selectedAdventure) {
       url.searchParams.set('tour', selectedAdventure.slug);
@@ -107,7 +119,7 @@ export const App: React.FC = () => {
     }
 
     window.history.replaceState({}, '', url.toString());
-  }, [filters.mode, selectedAdventure, activeStageNumber]);
+  }, [filters.mode, mapTheme, selectedAdventure, activeStageNumber]);
 
   // Escape key closes open popover or detail sheet
   useEffect(() => {
@@ -262,6 +274,8 @@ export const App: React.FC = () => {
         activeTrack={activeTrack}
         hoveredPoint={hoveredTrackPoint}
         filterMode={filters.mode}
+        mapTheme={mapTheme}
+        onChangeMapTheme={setMapTheme}
         flyRequest={flyRequest}
         isSheetOpen={Boolean(selectedAdventure)}
         onSelectAdventure={handleSelectAdventure}

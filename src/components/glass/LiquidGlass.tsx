@@ -4,10 +4,15 @@ export interface LiquidGlassProps extends React.HTMLAttributes<HTMLDivElement> {
   variant?: 'clear' | 'regular';
   radius?: number;
   interactive?: boolean;
+  /** Enable full SVG Snell's-law displacement lens (enabled by default; disable on long scrolling lists for 120fps GPU budget) */
+  opticalLens?: boolean;
   refractionScale?: number;
   as?: 'div' | 'header' | 'aside' | 'nav' | 'section';
   contentClassName?: string;
 }
+
+/** Shared memoization cache for identical glass geometry SDF maps */
+const DISPLACEMENT_CACHE = new Map<string, string>();
 
 /** Detect Chromium support for SVG url() inside CSS backdrop-filter */
 function supportsSvgBackdropFilter(): boolean {
@@ -27,14 +32,26 @@ function sdRoundedBox(px: number, py: number, hw: number, hh: number, r: number)
   return Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - clampedR;
 }
 
-/** Generate convex-squircle Snell's-law displacement map data URL */
-function buildDisplacementMapUrl(width: number, height: number, radius: number, bezelPx: number): string {
-  const maxSample = 180;
+/**
+ * Generates (and caches) a real Snell's-law 3D convex meniscus displacement map (n1=1.0 -> n2=1.52).
+ * R channel = X normal refraction, G channel = Y normal refraction.
+ */
+function buildDisplacementMapUrl(
+  width: number,
+  height: number,
+  radius: number,
+  bezelPx: number
+): string {
+  const maxSample = 196;
   const ratio = Math.min(1, maxSample / Math.max(width, height, 1));
-  const cw = Math.max(24, Math.round(width * ratio));
-  const ch = Math.max(24, Math.round(height * ratio));
+  const cw = Math.max(28, Math.round(width * ratio));
+  const ch = Math.max(28, Math.round(height * ratio));
   const r = radius * ratio;
-  const bezel = Math.max(4, bezelPx * ratio);
+  const bezel = Math.max(6, Math.min(bezelPx * ratio, Math.min(cw, ch) * 0.48));
+
+  const cacheKey = `${cw}x${ch}_r${Math.round(r * 10)}_b${Math.round(bezel * 10)}`;
+  const cached = DISPLACEMENT_CACHE.get(cacheKey);
+  if (cached) return cached;
 
   const canvas = document.createElement('canvas');
   canvas.width = cw;
@@ -46,7 +63,11 @@ function buildDisplacementMapUrl(width: number, height: number, radius: number, 
   const data = img.data;
   const hw = cw / 2;
   const hh = ch / 2;
-  const eps = 0.75;
+  const eps = 0.8;
+
+  const maxTheta = Math.asin(0.985);
+  const maxRefracted = Math.asin(0.985 / 1.52);
+  const normDeflect = Math.sin(maxTheta - maxRefracted) || 1;
 
   for (let y = 0; y < ch; y++) {
     const py = y + 0.5 - hh;
@@ -57,10 +78,11 @@ function buildDisplacementMapUrl(width: number, height: number, radius: number, 
       const idx = (y * cw + x) * 4;
 
       if (distInside > 0 && distInside < bezel) {
-        // Normalized rim position: 1 at outer glass edge -> 0 at inner flat plane
         const t = 1 - distInside / bezel;
-        // Convex lens refraction curve (Snell's law inspired rim warp)
-        const lens = Math.pow(t, 2.15);
+        const sinTheta = Math.min(0.985, Math.pow(t, 1.32));
+        const theta = Math.asin(sinTheta);
+        const thetaRefracted = Math.asin(sinTheta / 1.52);
+        const lens = Math.sin(theta - thetaRefracted) / normDeflect;
 
         const gx =
           sdRoundedBox(px + eps, py, hw, hh, r) - sdRoundedBox(px - eps, py, hw, hh, r);
@@ -70,7 +92,6 @@ function buildDisplacementMapUrl(width: number, height: number, radius: number, 
         const nx = gx / len;
         const ny = gy / len;
 
-        // Displace inward along surface normal
         const dx = -nx * lens;
         const dy = -ny * lens;
 
@@ -79,7 +100,6 @@ function buildDisplacementMapUrl(width: number, height: number, radius: number, 
         data[idx + 2] = 128;
         data[idx + 3] = 255;
       } else {
-        // Neutral flat interior: zero warp so text & charts stay razor sharp
         data[idx] = 128;
         data[idx + 1] = 128;
         data[idx + 2] = 128;
@@ -89,13 +109,16 @@ function buildDisplacementMapUrl(width: number, height: number, radius: number, 
   }
 
   ctx.putImageData(img, 0, 0);
-  return canvas.toDataURL('image/png');
+  const url = canvas.toDataURL('image/png');
+  DISPLACEMENT_CACHE.set(cacheKey, url);
+  return url;
 }
 
 export const LiquidGlass: React.FC<LiquidGlassProps> = ({
   variant = 'regular',
-  radius = 24,
+  radius = 26,
   interactive = false,
+  opticalLens = true,
   refractionScale,
   as: Tag = 'div',
   className = '',
@@ -109,22 +132,22 @@ export const LiquidGlass: React.FC<LiquidGlassProps> = ({
   const filterId = useMemo(() => `lg-lens-${rawId.replace(/[^a-zA-Z0-9_-]/g, '')}`, [rawId]);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [canRefract] = useState<boolean>(() => supportsSvgBackdropFilter());
-  const [lensState, setLensState] = useState<{ w: number; h: number; url: string } | null>(null);
+  const useLens = canRefract && opticalLens;
+  const [lensUrl, setLensUrl] = useState<string>('');
 
-  const scale = refractionScale ?? (variant === 'clear' ? 26 : 18);
-  const bezelPx = variant === 'clear' ? 18 : 22;
+  const scale = refractionScale ?? (variant === 'clear' ? 50 : 38);
+  const bezelPx = variant === 'clear' ? 28 : 34;
+  const preBlurStdDev = variant === 'clear' ? 1.15 : 6.0;
 
   useEffect(() => {
-    if (!canRefract || !containerRef.current) return;
+    if (!useLens || !containerRef.current) return;
     const el = containerRef.current;
     let rafId = 0;
 
     const updateMap = (w: number, h: number) => {
       if (w < 16 || h < 16) return;
       const url = buildDisplacementMapUrl(w, h, radius, bezelPx);
-      if (url) {
-        setLensState({ w: Math.round(w), h: Math.round(h), url });
-      }
+      if (url) setLensUrl(url);
     };
 
     const rect = el.getBoundingClientRect();
@@ -143,7 +166,7 @@ export const LiquidGlass: React.FC<LiquidGlassProps> = ({
       cancelAnimationFrame(rafId);
       ro.disconnect();
     };
-  }, [canRefract, radius, bezelPx]);
+  }, [useLens, radius, bezelPx]);
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (containerRef.current) {
@@ -161,17 +184,18 @@ export const LiquidGlass: React.FC<LiquidGlassProps> = ({
       ['--lg-radius' as string]: `${radius}px`,
       ...style,
     };
-    if (canRefract && lensState?.url) {
-      const blurPx = variant === 'clear' ? 5 : 17;
-      const satPct = variant === 'clear' ? 185 : 190;
-      const filterVal = `url(#${filterId}) blur(${blurPx}px) saturate(${satPct}%) brightness(1.04)`;
+    if (useLens && lensUrl) {
+      const satPct = variant === 'clear' ? 195 : 190;
+      const filterVal = `url(#${filterId}) saturate(${satPct}%) contrast(1.06) brightness(1.04)`;
       base.backdropFilter = filterVal;
       base.WebkitBackdropFilter = filterVal;
     }
     return base;
-  }, [canRefract, lensState?.url, radius, style, variant, filterId]);
+  }, [useLens, lensUrl, radius, style, variant, filterId]);
 
   const Component = Tag as React.ElementType;
+  const scaleWarm = Number((scale * 0.95).toFixed(1));
+  const scaleCool = Number((scale * 1.04).toFixed(1));
 
   return (
     <Component
@@ -181,7 +205,7 @@ export const LiquidGlass: React.FC<LiquidGlassProps> = ({
       onPointerMove={handlePointerMove}
       {...rest}
     >
-      {canRefract && lensState?.url && (
+      {useLens && lensUrl && (
         <svg
           aria-hidden="true"
           width="0"
@@ -191,28 +215,78 @@ export const LiquidGlass: React.FC<LiquidGlassProps> = ({
           <defs>
             <filter
               id={filterId}
-              x="0%"
-              y="0%"
-              width="100%"
-              height="100%"
+              x="-5%"
+              y="-5%"
+              width="110%"
+              height="110%"
               colorInterpolationFilters="sRGB"
             >
+              <feGaussianBlur
+                in="SourceGraphic"
+                stdDeviation={preBlurStdDev}
+                edgeMode="duplicate"
+                result="blurredBg"
+              />
               <feImage
-                href={lensState.url}
-                x="0"
-                y="0"
+                href={lensUrl}
+                x="0%"
+                y="0%"
                 width="100%"
                 height="100%"
                 preserveAspectRatio="none"
                 result="dispMap"
               />
-              <feDisplacementMap
-                in="SourceGraphic"
-                in2="dispMap"
-                scale={scale}
-                xChannelSelector="R"
-                yChannelSelector="G"
-              />
+              {variant === 'clear' ? (
+                <>
+                  <feDisplacementMap
+                    in="blurredBg"
+                    in2="dispMap"
+                    scale={scaleWarm}
+                    xChannelSelector="R"
+                    yChannelSelector="G"
+                    result="rawWarm"
+                  />
+                  <feColorMatrix
+                    in="rawWarm"
+                    type="matrix"
+                    values="1 0 0 0 0  0 0.5 0 0 0  0 0 0 0 0  0 0 0 1 0"
+                    result="chanWarm"
+                  />
+                  <feDisplacementMap
+                    in="blurredBg"
+                    in2="dispMap"
+                    scale={scaleCool}
+                    xChannelSelector="R"
+                    yChannelSelector="G"
+                    result="rawCool"
+                  />
+                  <feColorMatrix
+                    in="rawCool"
+                    type="matrix"
+                    values="0 0 0 0 0  0 0.5 0 0 0  0 0 1 0 0  0 0 0 1 0"
+                    result="chanCool"
+                  />
+                  <feComposite
+                    in="chanWarm"
+                    in2="chanCool"
+                    operator="arithmetic"
+                    k1="0"
+                    k2="1"
+                    k3="1"
+                    k4="0"
+                    result="refractedPrism"
+                  />
+                </>
+              ) : (
+                <feDisplacementMap
+                  in="blurredBg"
+                  in2="dispMap"
+                  scale={scale}
+                  xChannelSelector="R"
+                  yChannelSelector="G"
+                  result="refractedClean"
+                />
+              )}
             </filter>
           </defs>
         </svg>

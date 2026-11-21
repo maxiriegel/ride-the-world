@@ -250,6 +250,7 @@ export const FloatingTopBar: React.FC<FloatingTopBarProps> = ({
               variant="clear"
               radius={999}
               interactive
+              opticalLens={false}
               className={`region-chip-glass ${isActive ? 'region-chip-glass--active' : ''}`}
               onClick={() => onJumpRegion(key)}
             >
@@ -269,6 +270,7 @@ export const FloatingTopBar: React.FC<FloatingTopBarProps> = ({
           variant="clear"
           radius={999}
           interactive
+          opticalLens={false}
           className={`region-chip-glass ${filters.onlyFavorites ? 'region-chip-glass--fav-active' : ''}`}
           onClick={() =>
             onUpdateFilters((prev) => ({ ...prev, onlyFavorites: !prev.onlyFavorites }))

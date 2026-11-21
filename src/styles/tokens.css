@@ -3,40 +3,54 @@
   --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  /* Core Neutral Ink & Surfaces (HSL tailored) */
-  --ink-primary: hsl(215, 32%, 13%);
-  --ink-secondary: hsl(215, 18%, 34%);
-  --ink-muted: hsl(215, 14%, 48%);
-  --ink-on-accent: hsl(0, 0%, 100%);
-
   /* Discipline Semantic Accents */
-  --bike-primary: hsl(18, 86%, 48%);
-  --bike-secondary: hsl(28, 92%, 54%);
-  --bike-soft: hsla(18, 86%, 48%, 0.14);
-  --bike-border: hsla(18, 86%, 48%, 0.32);
+  --bike-primary: hsl(19, 92%, 52%);
+  --bike-secondary: hsl(31, 95%, 56%);
+  --bike-soft: hsla(19, 92%, 52%, 0.18);
+  --bike-border: hsla(19, 92%, 56%, 0.42);
 
-  --ski-primary: hsl(202, 88%, 43%);
-  --ski-secondary: hsl(193, 86%, 50%);
-  --ski-soft: hsla(202, 88%, 43%, 0.14);
-  --ski-border: hsla(202, 88%, 43%, 0.32);
+  --ski-primary: hsl(199, 92%, 48%);
+  --ski-secondary: hsl(190, 90%, 56%);
+  --ski-soft: hsla(199, 92%, 48%, 0.18);
+  --ski-border: hsla(199, 92%, 56%, 0.42);
 
-  --shop-gold: hsl(36, 92%, 44%);
-  --shop-soft: hsla(36, 92%, 48%, 0.16);
+  --shop-gold: hsl(38, 95%, 50%);
+  --shop-soft: hsla(38, 95%, 50%, 0.18);
 
-  /* Active Season Dynamic Tokens (default: all-season alpine) */
-  --season-accent: hsl(205, 82%, 44%);
-  --season-accent-soft: hsla(205, 82%, 44%, 0.14);
-  --season-tint-overlay: hsla(195, 35%, 96%, 0);
-  --glass-tint-clear: rgba(255, 255, 255, 0.42);
-  --glass-tint-regular: rgba(250, 252, 255, 0.72);
-  --glass-specular-color: rgba(255, 255, 255, 0.88);
+  /* Active Season Dynamic Tokens */
+  --season-accent: hsl(199, 90%, 48%);
+  --season-accent-soft: hsla(199, 90%, 48%, 0.18);
+  --season-tint-overlay: hsla(200, 40%, 50%, 0);
+
+  /* Adaptive Theme Tokens — Default: Rich Dark/Hybrid Map Background (Apple VisionOS / Maps Hybrid) */
+  --ink-primary: rgba(255, 255, 255, 0.97);
+  --ink-secondary: rgba(226, 236, 248, 0.82);
+  --ink-muted: rgba(194, 210, 230, 0.66);
+  --ink-on-accent: #ffffff;
+
+  /* True Water-Drop Liquid Glass Fills (Low opacity so optical lens refraction shines through!) */
+  --glass-fill-clear-top: rgba(255, 255, 255, 0.24);
+  --glass-fill-clear-mid: rgba(18, 28, 44, 0.24);
+  --glass-fill-clear-bot: rgba(255, 255, 255, 0.12);
+
+  --glass-fill-regular-top: rgba(30, 42, 62, 0.52);
+  --glass-fill-regular-mid: rgba(15, 23, 38, 0.58);
+  --glass-fill-regular-bot: rgba(24, 35, 54, 0.50);
+
+  --glass-subcard-bg: rgba(255, 255, 255, 0.085);
+  --glass-subcard-hover: rgba(255, 255, 255, 0.15);
+  --glass-subcard-border: rgba(255, 255, 255, 0.14);
+  --glass-divider: rgba(255, 255, 255, 0.15);
+  --glass-well-bg: rgba(8, 14, 26, 0.36);
+  --glass-pill-active-bg: rgba(255, 255, 255, 0.95);
+  --glass-pill-active-ink: hsl(215, 35%, 12%);
 
   /* Radii & Spacing */
   --radius-pill: 999px;
-  --radius-xl: 26px;
-  --radius-lg: 20px;
-  --radius-md: 14px;
-  --radius-sm: 10px;
+  --radius-xl: 28px;
+  --radius-lg: 22px;
+  --radius-md: 16px;
+  --radius-sm: 11px;
 
   /* Apple Fluid Spring Curves */
   --ease-spring: cubic-bezier(0.22, 1.24, 0.36, 1);
@@ -47,22 +61,39 @@
   --safe-bottom: max(14px, env(safe-area-inset-bottom));
 }
 
+/* Bright Cartographic Topo Mode Adaptation */
+[data-map-theme='topo'] {
+  --ink-primary: hsl(215, 36%, 12%);
+  --ink-secondary: hsl(215, 22%, 30%);
+  --ink-muted: hsl(215, 16%, 44%);
+
+  --glass-fill-clear-top: rgba(255, 255, 255, 0.42);
+  --glass-fill-clear-mid: rgba(255, 255, 255, 0.18);
+  --glass-fill-clear-bot: rgba(255, 255, 255, 0.28);
+
+  --glass-fill-regular-top: rgba(255, 255, 255, 0.62);
+  --glass-fill-regular-mid: rgba(246, 250, 255, 0.50);
+  --glass-fill-regular-bot: rgba(255, 255, 255, 0.56);
+
+  --glass-subcard-bg: rgba(255, 255, 255, 0.46);
+  --glass-subcard-hover: rgba(255, 255, 255, 0.74);
+  --glass-subcard-border: rgba(255, 255, 255, 0.65);
+  --glass-divider: rgba(15, 23, 42, 0.12);
+  --glass-well-bg: rgba(15, 23, 42, 0.075);
+  --glass-pill-active-bg: #ffffff;
+  --glass-pill-active-ink: hsl(215, 36%, 12%);
+}
+
 [data-season='summer'] {
-  --season-accent: hsl(18, 86%, 48%);
-  --season-accent-soft: hsla(18, 86%, 48%, 0.15);
-  --season-tint-overlay: hsla(32, 65%, 64%, 0.07);
-  --glass-tint-clear: rgba(255, 251, 246, 0.44);
-  --glass-tint-regular: rgba(255, 252, 248, 0.74);
-  --glass-specular-color: rgba(255, 250, 242, 0.92);
+  --season-accent: hsl(19, 92%, 52%);
+  --season-accent-soft: hsla(19, 92%, 52%, 0.18);
+  --season-tint-overlay: hsla(28, 80%, 52%, 0.05);
 }
 
 [data-season='winter'] {
-  --season-accent: hsl(202, 88%, 43%);
-  --season-accent-soft: hsla(202, 88%, 43%, 0.15);
-  --season-tint-overlay: hsla(202, 85%, 72%, 0.09);
-  --glass-tint-clear: rgba(244, 250, 255, 0.45);
-  --glass-tint-regular: rgba(246, 251, 255, 0.74);
-  --glass-specular-color: rgba(245, 252, 255, 0.94);
+  --season-accent: hsl(199, 92%, 48%);
+  --season-accent-soft: hsla(199, 92%, 48%, 0.18);
+  --season-tint-overlay: hsla(200, 90%, 62%, 0.07);
 }
 
 *,
@@ -81,7 +112,7 @@ body,
   overflow: hidden;
   font-family: var(--font-sans);
   color: var(--ink-primary);
-  background: hsl(204, 26%, 93%);
+  background: #0b1320;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }

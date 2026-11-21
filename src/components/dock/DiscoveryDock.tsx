@@ -71,6 +71,7 @@ export const DiscoveryDock: React.FC<DiscoveryDockProps> = ({
                 variant="regular"
                 radius={18}
                 interactive
+                opticalLens={false}
                 role="listitem"
                 className={`dock-card ${isSelected ? 'dock-card--selected' : ''}`}
                 onClick={() => onSelectAdventure(adv)}
