@@ -6,6 +6,7 @@ import mlcontour from 'maplibre-contour';
 import { Bike, Compass, Minus, Plus, Snowflake, Sparkles, Star } from 'lucide-react';
 import type { Adventure, FilterMode, TrackPayload, TrackPoint } from '../../types/adventure';
 import { REGION_PRESETS } from '../../data/adventures';
+import { resolvePublicUrl } from '../../utils/publicUrl';
 import { LiquidGlass } from '../glass/LiquidGlass';
 
 maplibregl.setWorkerUrl(maplibreWorkerUrl);
@@ -79,7 +80,9 @@ export const TopoMap: React.FC<TopoMapProps> = ({
     Promise.all(
       bikeWithTracks.map(async (adv) => {
         try {
-          const res = await fetch(adv.trackFile!);
+          const url = resolvePublicUrl(adv.trackFile);
+          if (!url) return null;
+          const res = await fetch(url);
           if (!res.ok) return null;
           const json = (await res.json()) as TrackPayload;
           return [adv.slug, json] as const;

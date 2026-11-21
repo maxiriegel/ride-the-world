@@ -16,6 +16,7 @@ import {
   X,
 } from 'lucide-react';
 import type { Adventure, TrackPayload, TrackPoint } from '../../types/adventure';
+import { resolvePublicUrl } from '../../utils/publicUrl';
 import { LiquidGlass } from '../glass/LiquidGlass';
 import { ElevationChart } from './ElevationChart';
 
@@ -65,7 +66,9 @@ export const AdventureSheet: React.FC<AdventureSheetProps> = ({
 
   const activeYoutubeId = activeStage?.youtubeId || adventure.youtubeId;
   const activeKomootUrl = activeStage?.komootUrl || adventure.komootUrl;
-  const activeGpxUrl = activeStage?.gpxDownloadUrl || adventure.gpxDownloadUrl;
+  const activeGpxUrl = resolvePublicUrl(
+    activeStage?.gpxDownloadUrl || adventure.gpxDownloadUrl
+  );
   const isPlayingVideo = playingVideoId === activeYoutubeId;
 
   const handleCopyDeepLink = async () => {

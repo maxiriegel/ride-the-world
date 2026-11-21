@@ -11,6 +11,7 @@ import { FloatingTopBar, type ActiveFilters } from './components/bar/FloatingTop
 import { DiscoveryDock } from './components/dock/DiscoveryDock';
 import { TopoMap } from './components/map/TopoMap';
 import { AdventureSheet } from './components/sheet/AdventureSheet';
+import { resolvePublicUrl } from './utils/publicUrl';
 
 const DEFAULT_FILTERS: ActiveFilters = {
   mode: 'all',
@@ -72,7 +73,7 @@ export const App: React.FC = () => {
       activeStageNumber !== null
         ? selectedAdventure.stages?.find((s) => s.stageNumber === activeStageNumber)
         : undefined;
-    return stageObj?.trackFile || selectedAdventure.trackFile || null;
+    return resolvePublicUrl(stageObj?.trackFile || selectedAdventure.trackFile);
   }, [selectedAdventure, activeStageNumber]);
 
   const activeTrack = targetTrackUrl ? trackMap[targetTrackUrl] ?? null : null;
