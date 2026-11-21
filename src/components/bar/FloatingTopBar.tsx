@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Bike,
   Globe,
@@ -75,7 +75,9 @@ export const FloatingTopBar: React.FC<FloatingTopBarProps> = ({
   onResetFilters,
   onJumpRegion,
 }) => {
-  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const desktopSearchRef = useRef<HTMLInputElement | null>(null);
+  const mobileSearchRef = useRef<HTMLInputElement | null>(null);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
 
   const extraFilterCount =
     filters.subDisciplines.length +
@@ -103,6 +105,17 @@ export const FloatingTopBar: React.FC<FloatingTopBarProps> = ({
     }));
   };
 
+  const handleToggleMobileSearch = () => {
+    setMobileSearchOpen((prev) => {
+      const next = !prev;
+      if (next) {
+        onCloseFilter();
+        requestAnimationFrame(() => mobileSearchRef.current?.focus());
+      }
+      return next;
+    });
+  };
+
   const visibleSubs =
     filters.mode === 'summer'
       ? BIKE_SUBS
@@ -113,10 +126,16 @@ export const FloatingTopBar: React.FC<FloatingTopBarProps> = ({
   return (
     <header className="top-hud" role="banner">
       <div className="top-hud__main-row">
-        {/* Main Floating Liquid Glass Capsule */}
+        {/* Main Floating Liquid Glass Capsule (Always 1 compact line on Mobile, Tablet & Desktop!) */}
         <LiquidGlass variant="clear" radius={999} className="top-bar-capsule">
           {/* Brand Identity */}
-          <div className="brand-block">
+          <button
+            id="brand-home-btn"
+            type="button"
+            className="brand-block"
+            onClick={() => onJumpRegion('dach')}
+            title="Auf Alpen / DACH zentrieren"
+          >
             <div className="brand-emblem" aria-hidden="true">
               <Mountain size={17} strokeWidth={2.4} />
             </div>
@@ -129,7 +148,7 @@ export const FloatingTopBar: React.FC<FloatingTopBarProps> = ({
                 </span>
               </p>
             </div>
-          </div>
+          </button>
 
           <div className="top-bar-divider" aria-hidden="true" />
 
@@ -188,12 +207,12 @@ export const FloatingTopBar: React.FC<FloatingTopBarProps> = ({
 
           <div className="top-bar-divider top-bar-divider--desktop" aria-hidden="true" />
 
-          {/* Search Input & Filter Trigger */}
+          {/* Search Input (Tablet/Desktop) + Compact Icon Triggers (Mobile) */}
           <div className="search-filter-group">
-            <div className="glass-search">
+            <div className="glass-search glass-search--desktop">
               <Search size={14} className="glass-search__icon" />
               <input
-                ref={searchInputRef}
+                ref={desktopSearchRef}
                 id="global-tour-search"
                 type="search"
                 value={filters.search}
@@ -211,7 +230,7 @@ export const FloatingTopBar: React.FC<FloatingTopBarProps> = ({
                   aria-label="Suche löschen"
                   onClick={() => {
                     onUpdateFilters((prev) => ({ ...prev, search: '' }));
-                    searchInputRef.current?.focus();
+                    desktopSearchRef.current?.focus();
                   }}
                 >
                   <X size={13} />
@@ -219,15 +238,31 @@ export const FloatingTopBar: React.FC<FloatingTopBarProps> = ({
               )}
             </div>
 
+            {/* Mobile Search Icon Button (< 640px) */}
+            <button
+              id="mobile-search-toggle-btn"
+              type="button"
+              className={`mobile-search-btn ${mobileSearchOpen || filters.search ? 'mobile-search-btn--active' : ''}`}
+              onClick={handleToggleMobileSearch}
+              aria-expanded={mobileSearchOpen}
+              aria-label="Suche öffnen"
+            >
+              <Search size={16} strokeWidth={2.3} />
+              {filters.search && <span className="mobile-search-btn__dot" />}
+            </button>
+
             <button
               id="toggle-filters-btn"
               type="button"
               className={`filter-trigger-btn ${isFilterOpen || extraFilterCount > 0 ? 'filter-trigger-btn--active' : ''}`}
-              onClick={onToggleFilterOpen}
+              onClick={() => {
+                setMobileSearchOpen(false);
+                onToggleFilterOpen();
+              }}
               aria-expanded={isFilterOpen}
               aria-label="Detailfilter öffnen"
             >
-              <SlidersHorizontal size={15} />
+              <SlidersHorizontal size={15} strokeWidth={2.3} />
               <span className="filter-trigger-btn__label">Filter</span>
               {extraFilterCount > 0 && (
                 <span className="filter-trigger-btn__badge">{extraFilterCount}</span>
@@ -237,8 +272,59 @@ export const FloatingTopBar: React.FC<FloatingTopBarProps> = ({
         </LiquidGlass>
       </div>
 
+      {/* Expandable Mobile Search Capsule (16px font prevents iOS Safari auto-zoom!) */}
+      {mobileSearchOpen && (
+        <LiquidGlass
+          variant="regular"
+          radius={999}
+          opticalLens={false}
+          className="mobile-search-drawer"
+        >
+          <div className="mobile-search-drawer__inner">
+            <Search size={16} className="glass-search__icon" />
+            <input
+              ref={mobileSearchRef}
+              id="mobile-tour-search"
+              type="search"
+              value={filters.search}
+              onChange={(e) =>
+                onUpdateFilters((prev) => ({ ...prev, search: e.target.value }))
+              }
+              placeholder="Ort, Pass, Skigebiet oder Tour suchen…"
+              aria-label="Touren durchsuchen"
+            />
+            {filters.search && (
+              <button
+                id="mobile-clear-search-btn"
+                type="button"
+                className="glass-search__clear"
+                aria-label="Suchtext löschen"
+                onClick={() => {
+                  onUpdateFilters((prev) => ({ ...prev, search: '' }));
+                  mobileSearchRef.current?.focus();
+                }}
+              >
+                <X size={14} />
+              </button>
+            )}
+            <button
+              id="mobile-close-search-btn"
+              type="button"
+              className="mobile-search-done-btn"
+              onClick={() => setMobileSearchOpen(false)}
+            >
+              Fertig
+            </button>
+          </div>
+        </LiquidGlass>
+      )}
+
       {/* Second Row: Quick Region Jumpers & Favorites Chip */}
-      <div className="region-chips-row" role="navigation" aria-label="Regionen-Schnellauswahl">
+      <div
+        className={`region-chips-row ${isFilterOpen || mobileSearchOpen ? 'region-chips-row--hidden-mobile' : ''}`}
+        role="navigation"
+        aria-label="Regionen-Schnellauswahl"
+      >
         {(
           ['world', 'dach', 'europe', 'north-america', 'japan'] as Array<'world' | RegionId>
         ).map((key) => {

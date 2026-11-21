@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { ADVENTURES, REGION_PRESETS } from './data/adventures';
 import type {
   Adventure,
@@ -9,9 +9,12 @@ import type {
 } from './types/adventure';
 import { FloatingTopBar, type ActiveFilters } from './components/bar/FloatingTopBar';
 import { DiscoveryDock } from './components/dock/DiscoveryDock';
-import { TopoMap, type MapThemeMode } from './components/map/TopoMap';
-import { AdventureSheet } from './components/sheet/AdventureSheet';
+import type { MapThemeMode } from './components/map/TopoMap';
+import { AdventureSheet, type MobileSheetSnap } from './components/sheet/AdventureSheet';
 import { resolvePublicUrl } from './utils/publicUrl';
+
+// Code-split heavy MapLibre WebGL bundle so the Liquid Glass UI shell renders instantaneously on mobile!
+const LazyTopoMap = lazy(() => import('./components/map/TopoMap'));
 
 const DEFAULT_FILTERS: ActiveFilters = {
   mode: 'all',
@@ -61,6 +64,7 @@ export const App: React.FC = () => {
   const [selectedAdventure, setSelectedAdventure] = useState<Adventure | null>(() =>
     initial.tourSlug ? ADVENTURES.find((a) => a.slug === initial.tourSlug) ?? null : null
   );
+  const [mobileSnap, setMobileSnap] = useState<MobileSheetSnap>('peek');
   const [activeStageNumber, setActiveStageNumber] = useState<number | null>(initial.stageNum);
   const [trackMap, setTrackMap] = useState<Record<string, TrackPayload>>({});
   const [hoveredTrackPoint, setHoveredTrackPoint] = useState<TrackPoint | null>(null);
@@ -82,6 +86,24 @@ export const App: React.FC = () => {
   }, [selectedAdventure, activeStageNumber]);
 
   const activeTrack = targetTrackUrl ? trackMap[targetTrackUrl] ?? null : null;
+
+  // Safeguard against accidental "Desktop site" checkbox on small physical smartphones
+  useEffect(() => {
+    const syncForcedDesktopPhone = () => {
+      const isCoarse = window.matchMedia?.('(pointer: coarse)').matches;
+      const minPhysScreen = Math.min(window.screen.width || 9999, window.screen.height || 9999);
+      if (isCoarse && minPhysScreen <= 480 && window.innerWidth >= 820) {
+        const vpMeta = document.querySelector('meta[name="viewport"]');
+        if (vpMeta) {
+          vpMeta.setAttribute(
+            'content',
+            `width=${Math.max(375, minPhysScreen)}, initial-scale=1.0, viewport-fit=cover`
+          );
+        }
+      }
+    };
+    syncForcedDesktopPhone();
+  }, []);
 
   // Sync season & mapTheme attributes on <html> for adaptive Liquid Glass & ink tokens
   useEffect(() => {
@@ -222,6 +244,7 @@ export const App: React.FC = () => {
 
   const handleSelectAdventure = useCallback((adv: Adventure) => {
     setSelectedAdventure(adv);
+    setMobileSnap('peek');
     setActiveStageNumber(null);
     setHoveredTrackPoint(null);
     setIsFilterOpen(false);
@@ -237,6 +260,9 @@ export const App: React.FC = () => {
     const preset = REGION_PRESETS[regionKey];
     setActiveRegion(regionKey);
     setIsFilterOpen(false);
+    if (window.innerWidth < 640) {
+      setSelectedAdventure(null);
+    }
     setFlyRequest((prev) => ({
       center: preset.center,
       zoom: preset.zoom,
@@ -267,34 +293,49 @@ export const App: React.FC = () => {
         onJumpRegion={handleJumpRegion}
       />
 
-      {/* 100% Full-Bleed 2D Topographic Map */}
-      <TopoMap
-        adventures={filteredAdventures}
-        selectedAdventure={selectedAdventure}
-        activeTrack={activeTrack}
-        hoveredPoint={hoveredTrackPoint}
-        filterMode={filters.mode}
-        mapTheme={mapTheme}
-        onChangeMapTheme={setMapTheme}
-        flyRequest={flyRequest}
-        isSheetOpen={Boolean(selectedAdventure)}
-        onSelectAdventure={handleSelectAdventure}
-      />
+      {/* 100% Full-Bleed 2D Topographic Map (Async Code-Split Chunk for Instant Mobile First Paint) */}
+      <Suspense
+        fallback={
+          <div className="topo-stage">
+            <div className="map-loading-pill">
+              <span className="map-loading-pill__spinner" />
+              <span>Weltkarte startet…</span>
+            </div>
+          </div>
+        }
+      >
+        <LazyTopoMap
+          adventures={filteredAdventures}
+          selectedAdventure={selectedAdventure}
+          activeTrack={activeTrack}
+          hoveredPoint={hoveredTrackPoint}
+          filterMode={filters.mode}
+          mapTheme={mapTheme}
+          onChangeMapTheme={setMapTheme}
+          flyRequest={flyRequest}
+          isSheetOpen={Boolean(selectedAdventure)}
+          isFilterOpen={isFilterOpen}
+          mobileSnap={mobileSnap}
+          onSelectAdventure={handleSelectAdventure}
+        />
+      </Suspense>
 
       {/* Collapsible Bottom Discovery Carousel */}
       <DiscoveryDock
         adventures={filteredAdventures}
         selectedSlug={selectedAdventure?.slug ?? null}
-        isSheetOpen={Boolean(selectedAdventure)}
+        isSheetOpen={Boolean(selectedAdventure) || isFilterOpen}
         onSelectAdventure={handleSelectAdventure}
       />
 
-      {/* Floating Right Detail Sheet / Mobile iOS Bottom Sheet */}
+      {/* Floating Right Detail Sheet / 3-Snap Mobile iOS Bottom Sheet */}
       {selectedAdventure && (
         <AdventureSheet
           adventure={selectedAdventure}
           activeStageNumber={activeStageNumber}
           activeTrack={activeTrack}
+          mobileSnap={mobileSnap}
+          onChangeMobileSnap={setMobileSnap}
           onSelectStage={handleSelectStage}
           onHoverTrackPoint={setHoveredTrackPoint}
           onClose={() => {

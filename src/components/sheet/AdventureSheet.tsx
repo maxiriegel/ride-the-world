@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Bike,
   BookOpen,
   Check,
+  ChevronUp,
   Download,
   ExternalLink,
   Layers,
@@ -20,10 +21,14 @@ import { resolvePublicUrl } from '../../utils/publicUrl';
 import { LiquidGlass } from '../glass/LiquidGlass';
 import { ElevationChart } from './ElevationChart';
 
+export type MobileSheetSnap = 'peek' | 'half' | 'full';
+
 interface AdventureSheetProps {
   adventure: Adventure;
   activeStageNumber: number | null;
   activeTrack: TrackPayload | null;
+  mobileSnap: MobileSheetSnap;
+  onChangeMobileSnap: (snap: MobileSheetSnap) => void;
   onSelectStage: (stageNumber: number | null) => void;
   onHoverTrackPoint: (point: TrackPoint | null) => void;
   onClose: () => void;
@@ -50,14 +55,19 @@ export const AdventureSheet: React.FC<AdventureSheetProps> = ({
   adventure,
   activeStageNumber,
   activeTrack,
+  mobileSnap,
+  onChangeMobileSnap,
   onSelectStage,
   onHoverTrackPoint,
   onClose,
 }) => {
   const [playingVideoId, setPlayingVideoId] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
-  const [mobileExpanded, setMobileExpanded] = useState(false);
-  const touchStartYRef = React.useRef<number | null>(null);
+  const touchStartYRef = useRef<number | null>(null);
+  const scrollBodyRef = useRef<HTMLDivElement | null>(null);
+
+  const isDesktop =
+    typeof window !== 'undefined' ? window.innerWidth >= 860 : true;
 
   const activeStage =
     activeStageNumber !== null
@@ -75,6 +85,13 @@ export const AdventureSheet: React.FC<AdventureSheetProps> = ({
     try {
       const url = new URL(window.location.href);
       url.searchParams.set('tour', adventure.slug);
+      if (navigator.share && window.innerWidth < 860) {
+        await navigator.share({
+          title: adventure.title,
+          url: url.toString(),
+        });
+        return;
+      }
       await navigator.clipboard.writeText(url.toString());
       setCopiedLink(true);
       setTimeout(() => setCopiedLink(false), 2000);
@@ -83,78 +100,119 @@ export const AdventureSheet: React.FC<AdventureSheetProps> = ({
     }
   };
 
+  const handleCycleSnap = () => {
+    if (mobileSnap === 'peek') onChangeMobileSnap('half');
+    else if (mobileSnap === 'half') onChangeMobileSnap('full');
+    else onChangeMobileSnap('peek');
+  };
+
+  const handleHeaderTouchStart = (e: React.TouchEvent) => {
+    touchStartYRef.current = e.touches[0]?.clientY ?? null;
+  };
+
+  const handleHeaderTouchEnd = (e: React.TouchEvent) => {
+    const startY = touchStartYRef.current;
+    const endY = e.changedTouches[0]?.clientY ?? null;
+    touchStartYRef.current = null;
+    if (startY === null || endY === null) return;
+    const dy = endY - startY;
+
+    if (dy < -32) {
+      // Swipe up
+      if (dy < -140) onChangeMobileSnap('full');
+      else if (mobileSnap === 'peek') onChangeMobileSnap('half');
+      else onChangeMobileSnap('full');
+    } else if (dy > 36) {
+      // Swipe down
+      if (mobileSnap === 'full') onChangeMobileSnap('half');
+      else if (mobileSnap === 'half') onChangeMobileSnap('peek');
+      else onClose();
+    }
+  };
+
   const isBike = adventure.season === 'summer';
+  const quickStatLine = adventure.bikeMetrics
+    ? `${(activeStage?.distanceKm ?? adventure.bikeMetrics.distanceKm).toLocaleString('de-DE')} km · ${(activeStage?.elevationUpM ?? adventure.bikeMetrics.elevationUpM).toLocaleString('de-DE')} hm · Gipfel ${adventure.bikeMetrics.highestPointM.toLocaleString('de-DE')} m`
+    : adventure.skiMetrics
+      ? `${adventure.skiMetrics.baseElevationM.toLocaleString('de-DE')}–${adventure.skiMetrics.peakElevationM.toLocaleString('de-DE')} m${adventure.skiMetrics.slopesKm ? ` · ${adventure.skiMetrics.slopesKm} Pisten-km` : ''}`
+      : '';
 
   return (
     <aside
-      className={`detail-sheet-wrap ${mobileExpanded ? 'detail-sheet-wrap--expanded' : ''}`}
+      className={`detail-sheet-wrap detail-sheet-wrap--${mobileSnap}`}
       aria-label={`Details zu ${adventure.title}`}
     >
-      <LiquidGlass variant="regular" radius={26} className="detail-sheet">
-        {/* Mobile iOS Bottom-Sheet Grabber */}
+      <LiquidGlass
+        variant="regular"
+        radius={26}
+        opticalLens={isDesktop}
+        className="detail-sheet"
+      >
+        {/* Mobile/Tablet iOS Draggable Sheet Handle + Header */}
         <div
-          className="sheet-grabber-area"
-          onClick={() => setMobileExpanded((e) => !e)}
-          onTouchStart={(e) => {
-            touchStartYRef.current = e.touches[0]?.clientY ?? null;
-          }}
-          onTouchEnd={(e) => {
-            const startY = touchStartYRef.current;
-            const endY = e.changedTouches[0]?.clientY ?? null;
-            if (startY !== null && endY !== null) {
-              if (startY - endY > 35) setMobileExpanded(true);
-              if (endY - startY > 45) {
-                if (mobileExpanded) setMobileExpanded(false);
-                else onClose();
-              }
-            }
-            touchStartYRef.current = null;
-          }}
+          className="sheet-drag-zone"
+          onTouchStart={handleHeaderTouchStart}
+          onTouchEnd={handleHeaderTouchEnd}
         >
-          <span className="sheet-grabber-bar" />
-        </div>
+          <button
+            type="button"
+            className="sheet-grabber-area"
+            onClick={handleCycleSnap}
+            aria-label="Detailansicht vergrößern oder verkleinern"
+          >
+            <span className="sheet-grabber-bar" />
+          </button>
 
-        {/* Top Sheet Meta & Action Buttons */}
-        <div className="sheet-topbar">
-          <div className="sheet-badges">
-            <span className={`sheet-pill sheet-pill--${adventure.season}`}>
-              {isBike ? <Bike size={12} /> : <Snowflake size={12} />}
-              {SUB_LABELS[adventure.subDiscipline]}
-            </span>
-            <span className="sheet-pill sheet-pill--neutral">{adventure.countryCode}</span>
-            {adventure.isFavorite && (
-              <span className="sheet-pill sheet-pill--fav" title="Marius’ persönlicher Favorit">
-                <Star size={11} fill="currentColor" /> Favorit
+          {/* Top Sheet Meta & Action Buttons */}
+          <div className="sheet-topbar">
+            <div className="sheet-badges">
+              <span className={`sheet-pill sheet-pill--${adventure.season}`}>
+                {isBike ? <Bike size={12} /> : <Snowflake size={12} />}
+                {SUB_LABELS[adventure.subDiscipline]}
               </span>
-            )}
-          </div>
+              <span className="sheet-pill sheet-pill--neutral">{adventure.countryCode}</span>
+              {adventure.isFavorite && (
+                <span className="sheet-pill sheet-pill--fav" title="Marius’ persönlicher Favorit">
+                  <Star size={11} fill="currentColor" /> Favorit
+                </span>
+              )}
+            </div>
 
-          <div className="sheet-icon-actions">
-            <button
-              id="sheet-share-btn"
-              type="button"
-              className="sheet-circle-btn"
-              onClick={handleCopyDeepLink}
-              title="Direktlink zu dieser Tour kopieren"
-              aria-label="Direktlink kopieren"
-            >
-              {copiedLink ? <Check size={15} /> : <Share2 size={15} />}
-            </button>
-            <button
-              id="sheet-close-btn"
-              type="button"
-              className="sheet-circle-btn"
-              onClick={onClose}
-              title="Schließen"
-              aria-label="Detailansicht schließen"
-            >
-              <X size={16} />
-            </button>
+            <div className="sheet-icon-actions">
+              <button
+                id="sheet-share-btn"
+                type="button"
+                className="sheet-circle-btn"
+                onClick={handleCopyDeepLink}
+                title="Tour teilen oder Direktlink kopieren"
+                aria-label="Tour teilen"
+              >
+                {copiedLink ? <Check size={15} /> : <Share2 size={15} />}
+              </button>
+              <button
+                id="sheet-close-btn"
+                type="button"
+                className="sheet-circle-btn"
+                onClick={onClose}
+                title="Schließen"
+                aria-label="Detailansicht schließen"
+              >
+                <X size={17} />
+              </button>
+            </div>
           </div>
         </div>
 
         {/* Scrollable Sheet Body */}
-        <div className="sheet-scroll-body">
+        <div
+          ref={scrollBodyRef}
+          className="sheet-scroll-body"
+          onScroll={(e) => {
+            if (mobileSnap === 'peek' && e.currentTarget.scrollTop > 18) {
+              onChangeMobileSnap('half');
+            }
+          }}
+        >
           {/* Title & Location */}
           <div className="sheet-heading">
             <h2 className="sheet-title">{adventure.title}</h2>
@@ -167,12 +225,27 @@ export const AdventureSheet: React.FC<AdventureSheetProps> = ({
             </div>
           </div>
 
+          {/* Mobile Peek Quick-Bar (gives immediate stats & expand button while keeping >52% map visible!) */}
+          <div className="sheet-peek-bar">
+            <span className="sheet-peek-bar__stats">{quickStatLine}</span>
+            <button
+              id="sheet-expand-btn"
+              type="button"
+              className="sheet-peek-bar__expand"
+              onClick={() => onChangeMobileSnap('half')}
+            >
+              <Play size={12} fill="currentColor" />
+              <span>Video & Profil</span>
+              <ChevronUp size={14} />
+            </button>
+          </div>
+
           {/* 1-Click Privacy-Clean Inline YouTube Video */}
           <div className="sheet-video-block">
             <div className="sheet-video-frame">
               {isPlayingVideo ? (
                 <iframe
-                  src={`https://www.youtube-nocookie.com/embed/${activeYoutubeId}?autoplay=1&rel=0`}
+                  src={`https://www.youtube-nocookie.com/embed/${activeYoutubeId}?autoplay=1&rel=0&playsinline=1`}
                   title={adventure.youtubeTitle}
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                   allowFullScreen
@@ -182,7 +255,10 @@ export const AdventureSheet: React.FC<AdventureSheetProps> = ({
                   id="sheet-play-video-btn"
                   type="button"
                   className="sheet-video-poster"
-                  onClick={() => setPlayingVideoId(activeYoutubeId)}
+                  onClick={() => {
+                    if (mobileSnap === 'peek') onChangeMobileSnap('half');
+                    setPlayingVideoId(activeYoutubeId);
+                  }}
                   aria-label={`YouTube-Video abspielen: ${adventure.youtubeTitle}`}
                 >
                   <img
@@ -193,6 +269,7 @@ export const AdventureSheet: React.FC<AdventureSheetProps> = ({
                   <LiquidGlass
                     variant="clear"
                     radius={999}
+                    opticalLens={isDesktop}
                     className="sheet-play-glass-btn"
                   >
                     <Play size={20} fill="currentColor" />
@@ -426,7 +503,7 @@ export const AdventureSheet: React.FC<AdventureSheetProps> = ({
             </div>
           </div>
 
-          {/* Shop-Pack Protection Notice (for paid routes like Quast-Route) */}
+          {/* Shop-Pack Protection Notice */}
           {adventure.accessType === 'shop-pack' && (
             <div className="shop-protection-note">
               <ShieldCheck size={17} />

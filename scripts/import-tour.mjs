@@ -242,6 +242,32 @@ export async function saveTrackArtifacts(slug, title, coords, { isPreviewOnly = 
     gpxDownloadUrl = `/gpx/${slug}.gpx`;
   }
 
+  // Keep lightweight overview-bundle.json in sync automatically for instant map startup
+  if (!slug.includes('-etappe-')) {
+    const bundlePath = path.join( path.dirname(path.join('public/tracks', `${slug}.json`)), 'overview-bundle.json');
+    let bundle = {};
+    try {
+      bundle = JSON.parse(await fs.readFile(bundlePath, 'utf8'));
+    } catch {
+      bundle = {};
+    }
+    const pts = payload.points;
+    const step = Math.max(1, Math.floor(pts.length / 55));
+    const mini = [];
+    for (let i = 0; i < pts.length; i += step) {
+      mini.push([Number(pts[i][0].toFixed(4)), Number(pts[i][1].toFixed(4))]);
+    }
+    if (pts.length > 0) {
+      const last = pts[pts.length - 1];
+      const lc = [Number(last[0].toFixed(4)), Number(last[1].toFixed(4))];
+      if (!mini.length || mini[mini.length - 1][0] !== lc[0] || mini[mini.length - 1][1] !== lc[1]) {
+        mini.push(lc);
+      }
+    }
+    bundle[slug] = mini;
+    await fs.writeFile(bundlePath, JSON.stringify(bundle));
+  }
+
   return {
     trackFile: `/tracks/${slug}.json`,
     gpxDownloadUrl,

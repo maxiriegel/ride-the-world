@@ -8,4 +8,7 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ['maplibre-gl', 'maplibre-contour'],
   },
+  build: {
+    chunkSizeWarningLimit: 1600,
+  },
 });

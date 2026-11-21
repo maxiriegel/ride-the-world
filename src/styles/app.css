@@ -1,22 +1,38 @@
 /* ==========================================================================
-   Ride the World · Full-Bleed 2D Map + Showroom Apple Liquid Glass UI (V2)
+   Ride the World · Responsive Multi-Platform & Cross-Browser Liquid Glass UI
    ========================================================================== */
 
 .app-viewport {
   position: relative;
   width: 100vw;
+  height: 100vh;
   height: 100dvh;
   overflow: hidden;
   user-select: none;
 }
 
 /* --------------------------------------------------------------------------
-   1. 2D Topographic Map Stage, Liquid Glass Cluster Orbs, Pins & Controls
+   1. 2D Topographic Map Stage, Loading State, Clusters, Pins & Controls
    -------------------------------------------------------------------------- */
 .topo-stage {
   position: absolute;
   inset: 0;
   z-index: 1;
+  background: radial-gradient(
+    ellipse at 50% 42%,
+    #18353a 0%,
+    #0d1f33 55%,
+    #08101d 100%
+  );
+}
+
+[data-map-theme='topo'] .topo-stage {
+  background: radial-gradient(
+    ellipse at 50% 42%,
+    #dce8d8 0%,
+    #cbdce2 65%,
+    #bfd2dc 100%
+  );
 }
 
 .topo-canvas {
@@ -24,6 +40,48 @@
   inset: 0;
   width: 100%;
   height: 100%;
+  opacity: 0;
+  transition: opacity 340ms ease;
+}
+
+.topo-canvas--ready {
+  opacity: 1;
+}
+
+.map-loading-pill {
+  position: absolute;
+  left: 50%;
+  top: calc(var(--safe-top) + 104px);
+  transform: translateX(-50%);
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6.5px 14px;
+  border-radius: 999px;
+  background: rgba(12, 20, 34, 0.76);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.94);
+  font-size: 12px;
+  font-weight: 650;
+  pointer-events: none;
+}
+
+.map-loading-pill__spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.28);
+  border-top-color: #ffffff;
+  animation: mapSpin 0.75s linear infinite;
+}
+
+@keyframes mapSpin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .topo-season-veil {
@@ -65,7 +123,7 @@
   background: radial-gradient(
     circle at 32% 24%,
     rgba(255, 255, 255, 0.44) 0%,
-    rgba(20, 32, 52, 0.34) 62%,
+    rgba(20, 32, 52, 0.36) 62%,
     rgba(255, 255, 255, 0.18) 100%
   );
   backdrop-filter: blur(8px) saturate(200%) brightness(1.08);
@@ -77,16 +135,14 @@
     0 0 0 1.4px rgba(255, 255, 255, 0.65);
   color: #ffffff;
   text-shadow: 0 1px 4px rgba(4, 10, 22, 0.5);
-  transition:
-    box-shadow 220ms var(--ease-smooth),
-    background 220ms ease;
+  transition: box-shadow 220ms var(--ease-smooth);
 }
 
 [data-map-theme='topo'] .map-cluster {
   background: radial-gradient(
     circle at 32% 24%,
     rgba(255, 255, 255, 0.85) 0%,
-    rgba(255, 255, 255, 0.42) 65%,
+    rgba(255, 255, 255, 0.44) 65%,
     rgba(255, 255, 255, 0.62) 100%
   );
   color: hsl(215, 36%, 12%);
@@ -98,11 +154,13 @@
     0 0 0 1.4px rgba(255, 255, 255, 0.85);
 }
 
-.map-cluster:hover {
-  box-shadow:
-    0 18px 36px rgba(4, 10, 22, 0.52),
-    inset 0 2.5px 2px rgba(255, 255, 255, 1),
-    0 0 0 2px rgba(255, 255, 255, 0.92);
+@media (hover: hover) and (pointer: fine) {
+  .map-cluster:hover {
+    box-shadow:
+      0 18px 36px rgba(4, 10, 22, 0.52),
+      inset 0 2.5px 2px rgba(255, 255, 255, 1),
+      0 0 0 2px rgba(255, 255, 255, 0.92);
+  }
 }
 
 .map-cluster__sheen {
@@ -149,11 +207,11 @@
   position: absolute;
   top: 0;
   left: 0;
-  margin-left: -20px;
-  margin-top: -20px;
+  margin-left: -21px;
+  margin-top: -21px;
   border: none;
   background: transparent;
-  padding: 0;
+  padding: 2px;
   pointer-events: auto;
   cursor: pointer;
   display: flex;
@@ -162,7 +220,6 @@
   z-index: 6;
 }
 
-.map-pin:hover,
 .map-pin--selected {
   z-index: 16;
 }
@@ -181,7 +238,7 @@
     inset 0 2px 1.5px rgba(255, 255, 255, 0.68),
     inset 0 -2px 3px rgba(0, 0, 0, 0.22),
     0 0 0 2px rgba(255, 255, 255, 0.92);
-  transition: transform 260ms var(--ease-spring);
+  transition: transform 240ms var(--ease-spring);
 }
 
 .map-pin--summer .map-pin__core {
@@ -192,9 +249,21 @@
   background: linear-gradient(145deg, hsl(194, 96%, 54%), hsl(206, 90%, 38%));
 }
 
-.map-pin:hover .map-pin__core,
 .map-pin--selected .map-pin__core {
   transform: translateY(-4px) scale(1.14);
+}
+
+.map-pin:active .map-pin__core {
+  transform: scale(0.95);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .map-pin:hover {
+    z-index: 16;
+  }
+  .map-pin:hover .map-pin__core {
+    transform: translateY(-4px) scale(1.14);
+  }
 }
 
 .map-pin__badge {
@@ -219,7 +288,7 @@
 
 .map-pin__pulse {
   position: absolute;
-  top: -7px;
+  top: -5px;
   left: 50%;
   width: 54px;
   height: 54px;
@@ -243,7 +312,7 @@
 }
 
 .map-pin__caption {
-  margin-top: 6px;
+  margin-top: 5px;
   padding: 3px 9px;
   border-radius: 999px;
   font-size: 11px;
@@ -254,7 +323,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   color: #ffffff;
-  background: rgba(10, 18, 32, 0.72);
+  background: rgba(10, 18, 32, 0.78);
   backdrop-filter: blur(10px) saturate(180%);
   -webkit-backdrop-filter: blur(10px) saturate(180%);
   box-shadow:
@@ -270,16 +339,23 @@
 
 [data-map-theme='topo'] .map-pin__caption {
   color: hsl(215, 36%, 12%);
-  background: rgba(255, 255, 255, 0.86);
+  background: rgba(255, 255, 255, 0.88);
   box-shadow:
     0 4px 12px rgba(15, 23, 42, 0.18),
     0 0 0 0.8px rgba(255, 255, 255, 0.95);
 }
 
-.map-pin:hover .map-pin__caption,
+/* Only show pin caption when selected, OR on real mouse hover (never sticky on touchscreens!) */
 .map-pin--selected .map-pin__caption {
   opacity: 1;
   transform: translateY(0);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .map-pin:hover .map-pin__caption {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* Live Elevation Profile Hover Puck */
@@ -300,6 +376,7 @@
   color: #ffffff;
   background: rgba(10, 18, 32, 0.88);
   backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   box-shadow:
     0 6px 16px rgba(4, 10, 22, 0.38),
     inset 0 1px 0.5px rgba(255, 255, 255, 0.35);
@@ -315,29 +392,59 @@
   box-shadow: 0 3px 12px rgba(4, 10, 22, 0.48);
 }
 
+/* MapLibre Attribution Polish */
+.maplibregl-ctrl-bottom-right {
+  z-index: 6 !important;
+  transition: right 340ms var(--ease-smooth);
+}
+
+.maplibregl-ctrl-attrib.maplibregl-compact {
+  margin: 0 10px 8px 0 !important;
+  background: rgba(15, 23, 38, 0.58) !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: rgba(255, 255, 255, 0.82) !important;
+  border-radius: 999px !important;
+}
+
+[data-map-theme='topo'] .maplibregl-ctrl-attrib.maplibregl-compact {
+  background: rgba(255, 255, 255, 0.76) !important;
+  color: hsl(215, 24%, 24%) !important;
+}
+
+.maplibregl-ctrl-attrib a {
+  color: inherit !important;
+}
+
 /* Right-Side Map Style & Zoom Liquid Glass Stack */
 .map-controls-stack {
   position: absolute;
-  right: 16px;
+  right: var(--safe-right);
   bottom: 44px;
   z-index: 15;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   gap: 10px;
-  transition: right 360ms var(--ease-smooth);
+  transition:
+    right 340ms var(--ease-smooth),
+    opacity 220ms ease,
+    transform 240ms var(--ease-smooth);
 }
 
 .app-viewport--sheet-open .map-controls-stack {
-  right: 476px;
+  right: calc(clamp(416px, 31vw, 468px) + 30px);
 }
 
 .app-viewport--sheet-open .maplibregl-ctrl-bottom-right {
-  right: 468px;
-  transition: right 360ms var(--ease-smooth);
+  right: calc(clamp(416px, 31vw, 468px) + 20px);
 }
 
-/* Map Atmosphere Style Switcher Pill */
+.map-mobile-quick-pill {
+  display: none;
+}
+
+/* Desktop/Tablet Map Atmosphere Style Switcher Pill */
 .map-style-pill .lg-content {
   display: flex;
   flex-direction: column;
@@ -364,9 +471,11 @@
     box-shadow 180ms ease;
 }
 
-.map-style-btn:hover {
-  color: var(--ink-primary);
-  background: var(--glass-subcard-hover);
+@media (hover: hover) and (pointer: fine) {
+  .map-style-btn:hover {
+    color: var(--ink-primary);
+    background: var(--glass-subcard-hover);
+  }
 }
 
 .map-style-btn--active {
@@ -402,8 +511,10 @@
   transition: background-color 160ms ease;
 }
 
-.map-ctrl-btn:hover {
-  background: var(--glass-subcard-hover);
+@media (hover: hover) and (pointer: fine) {
+  .map-ctrl-btn:hover {
+    background: var(--glass-subcard-hover);
+  }
 }
 
 .map-ctrl-divider {
@@ -418,13 +529,13 @@
 .top-hud {
   position: absolute;
   top: var(--safe-top);
-  left: 16px;
-  right: 16px;
+  left: var(--safe-left);
+  right: var(--safe-right);
   z-index: 30;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 9px;
   pointer-events: none;
 }
 
@@ -437,14 +548,19 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px 11px 8px 13px;
+  padding: 7px 10px 7px 12px;
 }
 
 .brand-block {
+  border: none;
+  background: transparent;
+  padding: 0 2px 0 0;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding-right: 2px;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
 }
 
 .brand-emblem {
@@ -469,7 +585,7 @@
 
 .brand-title {
   margin: 0;
-  font-size: 15px;
+  font-size: clamp(14.5px, 1.05vw, 16px);
   font-weight: 800;
   letter-spacing: -0.028em;
   line-height: 1.12;
@@ -514,16 +630,20 @@
   color: var(--ink-secondary);
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 5.5px;
   cursor: pointer;
+  white-space: nowrap;
   transition:
     background-color 220ms var(--ease-smooth),
     color 200ms ease,
     box-shadow 220ms ease;
 }
 
-.mode-btn:hover {
-  color: var(--ink-primary);
+@media (hover: hover) and (pointer: fine) {
+  .mode-btn:hover {
+    color: var(--ink-primary);
+  }
 }
 
 .mode-btn--active {
@@ -582,7 +702,7 @@
   outline: none;
   background: transparent;
   padding: 0 7px;
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 550;
   color: var(--ink-primary);
 }
@@ -595,14 +715,23 @@
   border: none;
   background: var(--glass-subcard-hover);
   color: var(--ink-primary);
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   border-radius: 999px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   padding: 0;
+  flex-shrink: 0;
+}
+
+.mobile-search-btn {
+  display: none;
+}
+
+.mobile-search-drawer {
+  display: none;
 }
 
 .filter-trigger-btn {
@@ -616,6 +745,7 @@
   font-weight: 700;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   cursor: pointer;
   transition:
@@ -623,8 +753,10 @@
     color 180ms ease;
 }
 
-.filter-trigger-btn:hover {
-  background: var(--glass-subcard-hover);
+@media (hover: hover) and (pointer: fine) {
+  .filter-trigger-btn:hover {
+    background: var(--glass-subcard-hover);
+  }
 }
 
 .filter-trigger-btn--active {
@@ -655,8 +787,9 @@
   gap: 8px;
   max-width: 100%;
   overflow-x: auto;
-  padding: 2px 8px 8px;
+  padding: 2px 8px 6px;
   scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
   pointer-events: auto;
 }
 
@@ -700,7 +833,9 @@
 
 /* Context-Sensitive Filter Popover */
 .filter-popover {
-  width: min(510px, calc(100vw - 28px));
+  width: min(510px, calc(100vw - 24px));
+  max-height: calc(100dvh - 110px);
+  overflow-y: auto;
   pointer-events: auto;
 }
 
@@ -735,7 +870,7 @@
   background: var(--glass-subcard-bg);
   color: var(--ink-secondary);
   border-radius: 999px;
-  padding: 5px 11px;
+  padding: 6px 12px;
   font-size: 11.5px;
   font-weight: 650;
   display: inline-flex;
@@ -744,14 +879,9 @@
   cursor: pointer;
 }
 
-.filter-reset-btn:hover {
-  background: var(--glass-subcard-hover);
-  color: var(--ink-primary);
-}
-
 .filter-close-btn {
-  width: 29px;
-  height: 29px;
+  width: 32px;
+  height: 32px;
   border-radius: 999px;
   border: 1px solid var(--glass-subcard-border);
   background: var(--glass-subcard-bg);
@@ -780,7 +910,7 @@
 .filter-toggles-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 6.5px;
+  gap: 7px;
 }
 
 .filter-pill {
@@ -788,8 +918,8 @@
   background: var(--glass-subcard-bg);
   color: var(--ink-secondary);
   border-radius: 999px;
-  padding: 6.5px 13px;
-  font-size: 12px;
+  padding: 7.5px 13px;
+  font-size: 12.5px;
   font-weight: 650;
   cursor: pointer;
   transition:
@@ -798,9 +928,11 @@
     border-color 160ms ease;
 }
 
-.filter-pill:hover {
-  background: var(--glass-subcard-hover);
-  color: var(--ink-primary);
+@media (hover: hover) and (pointer: fine) {
+  .filter-pill:hover {
+    background: var(--glass-subcard-hover);
+    color: var(--ink-primary);
+  }
 }
 
 .filter-pill--active {
@@ -815,20 +947,22 @@
    -------------------------------------------------------------------------- */
 .discovery-dock {
   position: absolute;
-  left: 16px;
+  left: var(--safe-left);
   right: 88px;
   bottom: var(--safe-bottom);
   z-index: 14;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 9px;
+  gap: 8px;
   pointer-events: none;
-  transition: right 360ms var(--ease-smooth);
+  transition:
+    right 340ms var(--ease-smooth),
+    opacity 220ms ease;
 }
 
 .discovery-dock--shifted {
-  right: 544px;
+  right: calc(clamp(416px, 31vw, 468px) + 96px);
 }
 
 .discovery-dock__bar {
@@ -863,6 +997,7 @@
   overflow-x: auto;
   padding: 3px 6px 8px;
   scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
   pointer-events: auto;
 }
 
@@ -914,8 +1049,10 @@
   transition: transform 320ms var(--ease-smooth);
 }
 
-.dock-card:hover .dock-card__thumb {
-  transform: scale(1.06);
+@media (hover: hover) and (pointer: fine) {
+  .dock-card:hover .dock-card__thumb {
+    transform: scale(1.06);
+  }
 }
 
 .dock-card__sport {
@@ -999,17 +1136,17 @@
 }
 
 /* --------------------------------------------------------------------------
-   4. Right Floating Liquid Glass Inspector Sheet & Mobile Bottom Sheet
+   4. Right Floating Liquid Glass Inspector Sheet & Mobile 3-Snap Sheet
    -------------------------------------------------------------------------- */
 .detail-sheet-wrap {
   position: absolute;
-  top: calc(var(--safe-top) + 98px);
-  right: 16px;
+  top: calc(var(--safe-top) + 96px);
+  right: var(--safe-right);
   bottom: var(--safe-bottom);
-  width: 446px;
+  width: clamp(416px, 31vw, 468px);
   z-index: 22;
   display: flex;
-  animation: sheetSlideIn 340ms var(--ease-spring);
+  animation: sheetSlideIn 320ms var(--ease-spring);
 }
 
 @keyframes sheetSlideIn {
@@ -1035,7 +1172,18 @@
   height: 100%;
 }
 
+.sheet-drag-zone {
+  flex-shrink: 0;
+}
+
 .sheet-grabber-area {
+  display: none;
+  width: 100%;
+  border: none;
+  background: transparent;
+}
+
+.sheet-peek-bar {
   display: none;
 }
 
@@ -1113,8 +1261,8 @@
 }
 
 .sheet-circle-btn {
-  width: 33px;
-  height: 33px;
+  width: 34px;
+  height: 34px;
   border-radius: 999px;
   border: 1px solid var(--glass-subcard-border);
   background: var(--glass-subcard-bg);
@@ -1126,14 +1274,18 @@
   transition: background-color 160ms ease;
 }
 
-.sheet-circle-btn:hover {
-  background: var(--glass-subcard-hover);
+@media (hover: hover) and (pointer: fine) {
+  .sheet-circle-btn:hover {
+    background: var(--glass-subcard-hover);
+  }
 }
 
 /* Scrollable Sheet Content */
 .sheet-scroll-body {
   flex: 1;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   padding: 15px 18px 22px;
   display: flex;
   flex-direction: column;
@@ -1164,7 +1316,7 @@
 
 .sheet-title {
   margin: 0;
-  font-size: 20.5px;
+  font-size: clamp(19px, 1.4vw, 21.5px);
   font-weight: 800;
   letter-spacing: -0.028em;
   line-height: 1.18;
@@ -1183,6 +1335,7 @@
   margin-top: 3px;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 5px;
   font-size: 12px;
   font-weight: 650;
@@ -1240,8 +1393,10 @@
   transition: transform 420ms var(--ease-smooth);
 }
 
-.sheet-video-poster:hover img {
-  transform: scale(1.05);
+@media (hover: hover) and (pointer: fine) {
+  .sheet-video-poster:hover img {
+    transform: scale(1.05);
+  }
 }
 
 .sheet-video-poster__scrim {
@@ -1298,11 +1453,6 @@
   text-decoration: none;
 }
 
-.sheet-yt-link:hover {
-  color: var(--ink-primary);
-  text-decoration: underline;
-}
-
 /* Multi-Day Stage Switcher */
 .sheet-stages-box {
   background: var(--glass-subcard-bg);
@@ -1326,10 +1476,11 @@
 
 .sheet-stages-pills {
   display: flex;
-  gap: 5.5px;
+  gap: 6px;
   overflow-x: auto;
   padding-bottom: 2px;
   scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
 }
 
 .sheet-stages-pills::-webkit-scrollbar {
@@ -1342,16 +1493,11 @@
   background: var(--glass-subcard-bg);
   color: var(--ink-secondary);
   border-radius: 999px;
-  padding: 5.5px 11px;
-  font-size: 11.5px;
+  padding: 6.5px 12px;
+  font-size: 12px;
   font-weight: 700;
   cursor: pointer;
   transition: background-color 160ms ease;
-}
-
-.stage-pill:hover {
-  background: var(--glass-subcard-hover);
-  color: var(--ink-primary);
 }
 
 .stage-pill--active {
@@ -1688,8 +1834,8 @@
 
 .cta-btn {
   flex: 1;
-  min-height: 43px;
-  padding: 9.5px 14px;
+  min-height: 44px;
+  padding: 10px 14px;
   border-radius: 15px;
   font-size: 13px;
   font-weight: 750;
@@ -1703,9 +1849,15 @@
     filter 180ms ease;
 }
 
-.cta-btn:hover {
-  transform: translateY(-1.5px);
-  filter: brightness(1.06);
+@media (hover: hover) and (pointer: fine) {
+  .cta-btn:hover {
+    transform: translateY(-1.5px);
+    filter: brightness(1.06);
+  }
+}
+
+.cta-btn:active {
+  transform: scale(0.985);
 }
 
 .cta-btn--primary-bike {
@@ -1738,106 +1890,118 @@
   color: var(--ink-primary);
 }
 
-.cta-btn--secondary:hover {
-  background: var(--glass-subcard-hover);
-}
+/* ==========================================================================
+   5. Responsive Multi-Platform Breakpoints
+      - Tier A: Tablet Landscape & Compact 13" Laptop (860px – 1099px)
+      - Tier B: Tablet Portrait (640px – 859px)
+      - Tier C: Smartphone (< 640px) — Native Apple Maps iOS Experience
+   ========================================================================== */
 
-/* --------------------------------------------------------------------------
-   5. Responsive Breakpoints (Tablet & Mobile iOS Bottom-Sheet)
-   -------------------------------------------------------------------------- */
-@media (max-width: 960px) {
+/* Tier A: Tablet Landscape & Compact Laptop */
+@media (max-width: 1099px) {
   .brand-subtitle__km,
   .top-bar-divider--desktop,
   .filter-trigger-btn__label {
     display: none;
   }
 
+  .filter-trigger-btn {
+    width: 38px;
+    height: 38px;
+    padding: 0;
+  }
+
   .glass-search {
-    width: 140px;
+    width: 152px;
   }
 
   .glass-search:focus-within {
-    width: 170px;
-  }
-}
-
-@media (max-width: 860px) {
-  .top-hud {
-    left: 10px;
-    right: 10px;
+    width: 184px;
   }
 
-  .top-bar-capsule .lg-content {
-    flex-wrap: wrap;
-    justify-content: space-between;
-    padding: 8px 10px;
-    border-radius: 22px;
-  }
-
-  .top-bar-capsule {
-    border-radius: 24px !important;
-  }
-
-  .top-bar-divider {
-    display: none;
-  }
-
-  .search-filter-group {
-    width: 100%;
-  }
-
-  .glass-search,
-  .glass-search:focus-within {
-    flex: 1;
-    width: auto;
-  }
-
-  .app-viewport--sheet-open .discovery-dock {
-    display: none;
+  .detail-sheet-wrap {
+    width: 388px;
   }
 
   .app-viewport--sheet-open .map-controls-stack {
-    right: 12px;
-    bottom: 53dvh;
+    right: 416px;
   }
 
-  .discovery-dock,
+  .app-viewport--sheet-open .maplibregl-ctrl-bottom-right {
+    right: 406px;
+  }
+
   .discovery-dock--shifted {
-    left: 10px;
-    right: 68px;
+    right: 472px;
+  }
+}
+
+/* Tier B: Tablet Portrait & Mobile Shared Sheet Mechanics (< 860px) */
+@media (max-width: 859px) {
+  /* Hide discovery dock & background map controls whenever sheet or filter popover is open -> 0% overlap! */
+  .app-viewport--sheet-open .discovery-dock {
+    opacity: 0;
+    pointer-events: none;
   }
 
-  /* iOS 26 Draggable / Expandable Bottom Sheet */
+  .map-controls-stack--overlay-open {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(10px) scale(0.94);
+  }
+
+  .app-viewport--sheet-open .maplibregl-ctrl-bottom-right {
+    display: none;
+  }
+
+  /* Centered Floating Bottom Sheet on Tablet Portrait (640px - 859px) */
   .detail-sheet-wrap {
     top: auto;
-    left: 8px;
-    right: 8px;
-    bottom: 8px;
-    width: auto;
-    height: 50dvh;
+    left: 50%;
+    right: auto;
+    bottom: var(--safe-bottom);
+    transform: translateX(-50%);
+    width: min(540px, calc(100vw - 24px));
+    height: 48dvh;
     transition: height 320ms var(--ease-spring);
-    animation: sheetRiseUp 300ms var(--ease-spring);
+    animation: sheetRiseCentered 300ms var(--ease-spring);
   }
 
-  .detail-sheet-wrap--expanded {
-    height: 85dvh;
+  .detail-sheet-wrap--peek {
+    height: 35dvh;
   }
 
-  @keyframes sheetRiseUp {
+  .detail-sheet-wrap--half {
+    height: 62dvh;
+  }
+
+  .detail-sheet-wrap--full {
+    height: 88dvh;
+  }
+
+  @keyframes sheetRiseCentered {
     from {
       opacity: 0;
-      transform: translateY(40px);
+      transform: translate(-50%, 36px);
     }
     to {
       opacity: 1;
-      transform: translateY(0);
+      transform: translate(-50%, 0);
     }
+  }
+
+  /* Calmer Sheet Backing so colorful pins behind never disturb text legibility */
+  .detail-sheet.lg-surface--regular {
+    background: var(--glass-fill-sheet-mobile);
+    backdrop-filter: blur(24px) saturate(200%) brightness(1.03);
+    -webkit-backdrop-filter: blur(24px) saturate(200%) brightness(1.03);
   }
 
   .sheet-grabber-area {
     display: flex;
     justify-content: center;
-    padding: 8px 0 2px;
+    align-items: center;
+    padding: 9px 0 3px;
     cursor: pointer;
   }
 
@@ -1845,6 +2009,385 @@
     width: 42px;
     height: 4.5px;
     border-radius: 999px;
-    background: var(--glass-divider);
+    background: rgba(255, 255, 255, 0.34);
+  }
+
+  [data-map-theme='topo'] .sheet-grabber-bar {
+    background: rgba(15, 23, 42, 0.24);
+  }
+
+  .sheet-topbar {
+    padding: 8px 15px 10px;
+  }
+
+  /* Peek Quick-Bar shown in compact 'peek' snap so user immediately sees stats & expand button */
+  .detail-sheet-wrap--peek .sheet-peek-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 9px 12px;
+    border-radius: 14px;
+    background: var(--glass-subcard-bg);
+    border: 1px solid var(--glass-subcard-border);
+  }
+
+  .sheet-peek-bar__stats {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--ink-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .sheet-peek-bar__expand {
+    flex-shrink: 0;
+    border: none;
+    border-radius: 999px;
+    padding: 6.5px 12px;
+    background: var(--season-accent);
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: 750;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+  }
+}
+
+/* Tier C: Smartphone (< 640px) — Compact 1-Line HUD, Snap Cards & 3-Stage Sheet */
+@media (max-width: 639px) {
+  .top-hud {
+    left: 10px;
+    right: 10px;
+    gap: 7px;
+  }
+
+  .top-hud__main-row {
+    width: 100%;
+  }
+
+  /* Single-line sleek 50px mobile capsule — frees >20% extra map height! */
+  .top-bar-capsule {
+    width: 100%;
+    border-radius: 999px !important;
+  }
+
+  .top-bar-capsule .lg-content {
+    flex-wrap: nowrap;
+    justify-content: space-between;
+    gap: 7px;
+    padding: 6px 7px;
+  }
+
+  .brand-copy,
+  .top-bar-divider,
+  .glass-search--desktop {
+    display: none;
+  }
+
+  .brand-emblem {
+    width: 38px;
+    height: 38px;
+    border-radius: 999px;
+  }
+
+  .mode-segmented {
+    flex: 1;
+    justify-content: space-between;
+    padding: 3px;
+  }
+
+  .mode-btn {
+    flex: 1;
+    min-height: 36px;
+    padding: 6px 8px;
+    font-size: 13px;
+    gap: 4.5px;
+  }
+
+  .search-filter-group {
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .mobile-search-btn {
+    position: relative;
+    width: 38px;
+    height: 38px;
+    border-radius: 999px;
+    border: 1px solid var(--glass-subcard-border);
+    background: var(--glass-subcard-bg);
+    color: var(--ink-primary);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+
+  .mobile-search-btn--active {
+    background: var(--glass-pill-active-bg);
+    color: var(--glass-pill-active-ink);
+    border-color: transparent;
+  }
+
+  .mobile-search-btn__dot {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: var(--season-accent);
+  }
+
+  .filter-trigger-btn {
+    position: relative;
+    width: 38px;
+    height: 38px;
+  }
+
+  .filter-trigger-btn__badge {
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    min-width: 17px;
+    height: 17px;
+    font-size: 10px;
+  }
+
+  /* Expandable Mobile Search Drawer (16px font prevents iOS Safari auto-zoom!) */
+  .mobile-search-drawer {
+    display: block;
+    width: 100%;
+    pointer-events: auto;
+  }
+
+  .mobile-search-drawer__inner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px 6px 14px;
+    height: 46px;
+  }
+
+  .mobile-search-drawer__inner input {
+    flex: 1;
+    width: 100%;
+    min-width: 0;
+    border: none;
+    outline: none;
+    background: transparent;
+    font-size: 16px;
+    font-weight: 550;
+    color: var(--ink-primary);
+  }
+
+  .mobile-search-drawer__inner input::placeholder {
+    color: var(--ink-muted);
+    font-size: 14.5px;
+  }
+
+  .mobile-search-done-btn {
+    border: none;
+    border-radius: 999px;
+    padding: 7px 13px;
+    background: var(--glass-pill-active-bg);
+    color: var(--glass-pill-active-ink);
+    font-size: 12.5px;
+    font-weight: 750;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  /* Region Chips Row on Mobile */
+  .region-chips-row {
+    width: calc(100% + 12px);
+    padding: 1px 6px 4px;
+    gap: 7px;
+  }
+
+  .region-chips-row--hidden-mobile {
+    display: none;
+  }
+
+  .region-chip-btn {
+    min-height: 34px;
+    padding: 6px 13px;
+    font-size: 12.5px;
+  }
+
+  /* Compact 2-Button Mobile Map Quick-Pill (Replaces bulky 6-button desktop stack) */
+  .map-style-pill--desktop,
+  .map-controls-pill--desktop {
+    display: none;
+  }
+
+  .map-controls-stack {
+    right: 10px;
+    bottom: calc(var(--safe-bottom) + 122px);
+  }
+
+  .map-mobile-quick-pill {
+    display: block;
+  }
+
+  .map-mobile-quick-pill .lg-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 4px;
+    gap: 2px;
+  }
+
+  .map-mobile-quick-btn {
+    min-width: 44px;
+    min-height: 42px;
+    padding: 5px 7px;
+    border: none;
+    border-radius: 18px;
+    background: transparent;
+    color: var(--ink-primary);
+    font-size: 9.5px;
+    font-weight: 750;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    cursor: pointer;
+  }
+
+  .map-mobile-quick-btn:active {
+    background: var(--glass-subcard-hover);
+  }
+
+  /* Full-Width Snap-Scroll Discovery Dock on Mobile */
+  .discovery-dock,
+  .discovery-dock--shifted {
+    left: 10px;
+    right: 10px;
+    bottom: var(--safe-bottom);
+  }
+
+  .discovery-toggle-btn {
+    min-height: 34px;
+    font-size: 12.5px;
+  }
+
+  .discovery-strip {
+    scroll-snap-type: x mandatory;
+    gap: 10px;
+    padding: 2px 24px 6px 2px;
+  }
+
+  .dock-card {
+    width: min(302px, calc(100vw - 52px));
+    scroll-snap-align: start;
+  }
+
+  .dock-card__inner {
+    padding: 9px;
+    gap: 12px;
+  }
+
+  .dock-card__thumb-wrap {
+    width: 88px;
+    height: 64px;
+  }
+
+  .dock-card__title {
+    font-size: 13.5px;
+  }
+
+  .dock-card__metrics {
+    font-size: 11.5px;
+  }
+
+  /* Full-Width 3-Snap iOS Bottom Sheet on Smartphone */
+  .detail-sheet-wrap {
+    left: 8px;
+    right: 8px;
+    bottom: max(8px, env(safe-area-inset-bottom, 8px));
+    transform: none;
+    width: auto;
+    animation: sheetRiseMobile 280ms var(--ease-spring);
+  }
+
+  .detail-sheet-wrap--peek {
+    height: 248px;
+  }
+
+  .detail-sheet-wrap--peek .sheet-scroll-body {
+    overflow: hidden;
+    padding-bottom: 14px;
+  }
+
+  .detail-sheet-wrap--peek .sheet-scroll-body > :nth-child(n + 3) {
+    display: none;
+  }
+
+  .detail-sheet-wrap--half {
+    height: 64dvh;
+  }
+
+  .detail-sheet-wrap--full {
+    height: 90dvh;
+  }
+
+  /* Keep collapsed ⓘ attribution neatly above the mobile Discovery Dock */
+  .maplibregl-ctrl-bottom-right {
+    bottom: calc(var(--safe-bottom) + 86px) !important;
+    right: 2px !important;
+  }
+
+  @keyframes sheetRiseMobile {
+    from {
+      opacity: 0;
+      transform: translateY(36px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .sheet-circle-btn {
+    width: 38px;
+    height: 38px;
+  }
+
+  .sheet-scroll-body {
+    padding: 12px 15px 22px;
+    gap: 13px;
+  }
+
+  .sheet-title {
+    font-size: 18.5px;
+  }
+
+  .cta-row {
+    flex-direction: column;
+  }
+}
+
+/* Landscape Phone Viewport (< 500px height) */
+@media (max-height: 500px) and (orientation: landscape) {
+  .region-chips-row,
+  .discovery-dock {
+    display: none;
+  }
+
+  .detail-sheet-wrap {
+    top: calc(var(--safe-top) + 58px);
+    left: auto;
+    right: var(--safe-right);
+    bottom: var(--safe-bottom);
+    transform: none;
+    width: min(380px, 50vw);
+    height: auto !important;
   }
 }

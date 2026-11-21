@@ -19,12 +19,13 @@ import type { Adventure, FilterMode, TrackPayload, TrackPoint } from '../../type
 import { REGION_PRESETS } from '../../data/adventures';
 import { resolvePublicUrl } from '../../utils/publicUrl';
 import { LiquidGlass } from '../glass/LiquidGlass';
+import type { MobileSheetSnap } from '../sheet/AdventureSheet';
 
 maplibregl.setWorkerUrl(maplibreWorkerUrl);
 
 export type MapThemeMode = 'hybrid' | 'topo' | 'night';
 
-interface TopoMapProps {
+export interface TopoMapProps {
   adventures: Adventure[];
   selectedAdventure: Adventure | null;
   activeTrack: TrackPayload | null;
@@ -34,6 +35,8 @@ interface TopoMapProps {
   onChangeMapTheme: (theme: MapThemeMode) => void;
   flyRequest: { center: [number, number]; zoom: number; seq: number } | null;
   isSheetOpen: boolean;
+  isFilterOpen: boolean;
+  mobileSnap: MobileSheetSnap;
   onSelectAdventure: (adventure: Adventure) => void;
 }
 
@@ -48,8 +51,11 @@ interface ScreenCluster {
 
 const TERRARIUM_URL = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
 const OPENFREEMAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty';
-const ESRI_WORLD_IMAGERY =
-  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+// Dual-host sharding doubles concurrent HTTP/1.1 connections from 6 -> 12 on mobile & desktop!
+const ESRI_WORLD_IMAGERY_TILES = [
+  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+  'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+];
 
 let contourProtocolRegistered = false;
 let sharedDemSource: InstanceType<typeof mlcontour.DemSource> | null = null;
@@ -61,7 +67,7 @@ function ensureContourDemSource() {
       encoding: 'terrarium',
       maxzoom: 13,
       worker: false,
-      cacheSize: 120,
+      cacheSize: 96,
     });
   }
   if (!contourProtocolRegistered) {
@@ -77,6 +83,18 @@ interface OriginalLabelStyle {
   haloWidth: maplibregl.DataDrivenPropertyValueSpecification<number> | undefined;
 }
 
+const NEXT_MAP_THEME: Record<MapThemeMode, MapThemeMode> = {
+  hybrid: 'topo',
+  topo: 'night',
+  night: 'hybrid',
+};
+
+const MAP_THEME_SHORT: Record<MapThemeMode, string> = {
+  hybrid: 'Hybrid',
+  topo: 'Topo',
+  night: 'Nacht',
+};
+
 export const TopoMap: React.FC<TopoMapProps> = ({
   adventures,
   selectedAdventure,
@@ -87,6 +105,8 @@ export const TopoMap: React.FC<TopoMapProps> = ({
   onChangeMapTheme,
   flyRequest,
   isSheetOpen,
+  isFilterOpen,
+  mobileSnap,
   onSelectAdventure,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
@@ -94,49 +114,47 @@ export const TopoMap: React.FC<TopoMapProps> = ({
   const hoverMarkerRef = useRef<maplibregl.Marker | null>(null);
   const hoverLabelRef = useRef<HTMLDivElement | null>(null);
   const symbolOriginalsRef = useRef<Record<string, OriginalLabelStyle>>({});
+  const coveredBaseLayerIdsRef = useRef<string[]>([]);
+  const topoDemMountedRef = useRef(false);
 
   const [mapReady, setMapReady] = useState(false);
+  const [tilesSettled, setTilesSettled] = useState(false);
   const [clusters, setClusters] = useState<ScreenCluster[]>([]);
-  const [overviewTracks, setOverviewTracks] = useState<Record<string, TrackPayload>>({});
+  const [overviewBundle, setOverviewBundle] = useState<Record<string, [number, number][]>>({});
 
-  // Preload lightweight overview tracks for visible Bike routes
+  const isDesktop =
+    typeof window !== 'undefined' ? window.innerWidth >= 640 : true;
+
+  // Load ALL 13 overview polylines in ONE single tiny 13 KB request instead of 13 separate fetches!
   useEffect(() => {
     let cancelled = false;
-    const bikeWithTracks = adventures.filter((a) => a.trackFile);
-    Promise.all(
-      bikeWithTracks.map(async (adv) => {
-        try {
-          const url = resolvePublicUrl(adv.trackFile);
-          if (!url) return null;
-          const res = await fetch(url);
-          if (!res.ok) return null;
-          const json = (await res.json()) as TrackPayload;
-          return [adv.slug, json] as const;
-        } catch {
-          return null;
+    const url = resolvePublicUrl('/tracks/overview-bundle.json');
+    if (!url) return;
+
+    fetch(url)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: Record<string, [number, number][]> | null) => {
+        if (!cancelled && data) {
+          setOverviewBundle(data);
         }
       })
-    ).then((entries) => {
-      if (cancelled) return;
-      const mapObj: Record<string, TrackPayload> = {};
-      for (const entry of entries) {
-        if (entry) mapObj[entry[0]] = entry[1];
-      }
-      setOverviewTracks(mapObj);
-    });
+      .catch(() => {
+        // Ignore network error
+      });
 
     return () => {
       cancelled = true;
     };
-  }, [adventures]);
+  }, []);
 
   // Compute screen-space clusters on pan/zoom so pins stay crisp & legible
   const recomputeClusters = useCallback(() => {
     const map = mapRef.current;
     if (!map) return;
     const zoom = map.getZoom();
-    const shouldCluster = zoom < 7.2;
-    const thresholdPx = zoom < 4.2 ? 50 : zoom < 5.8 ? 38 : 32;
+    const isNarrow = window.innerWidth < 640;
+    const shouldCluster = zoom < (isNarrow ? 7.5 : 7.2);
+    const thresholdPx = zoom < 4.2 ? 50 : isNarrow ? 42 : zoom < 5.8 ? 38 : 32;
 
     const projected = adventures.map((adv) => {
       const pt = map.project(adv.coordinates);
@@ -208,19 +226,112 @@ export const TopoMap: React.FC<TopoMapProps> = ({
     setClusters(grouped);
   }, [adventures, selectedAdventure]);
 
+  // Lazily mount DEM Hillshade + Contour Isolines ONLY when user enters 'topo' mode!
+  const mountTopoDemLayersIfNeeded = useCallback((map: maplibregl.Map) => {
+    if (topoDemMountedRef.current) return;
+    topoDemMountedRef.current = true;
+
+    try {
+      const demSource = ensureContourDemSource();
+      const layers = map.getStyle().layers || [];
+      const firstSymbolId = layers.find(
+        (l: maplibregl.LayerSpecification) => l.type === 'symbol'
+      )?.id;
+      const firstRoadId =
+        layers.find(
+          (l: maplibregl.LayerSpecification) =>
+            l.id.includes('road') || l.id.includes('highway') || l.id.includes('tunnel')
+        )?.id || firstSymbolId;
+      const beforeTrackId = map.getLayer('overview-tracks-casing')
+        ? 'overview-tracks-casing'
+        : firstSymbolId;
+
+      if (!map.getSource('topo-dem')) {
+        map.addSource('topo-dem', {
+          type: 'raster-dem',
+          tiles: [TERRARIUM_URL],
+          encoding: 'terrarium',
+          tileSize: 256,
+          maxzoom: 12,
+        });
+      }
+
+      if (!map.getLayer('topo-hillshade')) {
+        map.addLayer(
+          {
+            id: 'topo-hillshade',
+            type: 'hillshade',
+            source: 'topo-dem',
+            paint: {
+              'hillshade-exaggeration': 0.78,
+              'hillshade-illumination-direction': 315,
+              'hillshade-shadow-color': '#2f4b61',
+              'hillshade-highlight-color': '#ffffff',
+              'hillshade-accent-color': '#5f8b6e',
+            },
+          },
+          firstRoadId
+        );
+      }
+
+      // Only compute main-thread contours at closer mountain pass zoom (>= 10 on desktop, >= 11 on mobile)
+      const minContourZoom = window.innerWidth < 768 ? 11 : 10;
+      if (!map.getSource('topo-contours')) {
+        map.addSource('topo-contours', {
+          type: 'vector',
+          tiles: [
+            demSource.contourProtocolUrl({
+              multiplier: 1,
+              thresholds: {
+                10: [150, 750],
+                12: [50, 250],
+              },
+              elevationKey: 'ele',
+              levelKey: 'level',
+              contourLayer: 'contours',
+            }),
+          ],
+          maxzoom: 14,
+        });
+      }
+
+      if (!map.getLayer('topo-contour-lines')) {
+        map.addLayer(
+          {
+            id: 'topo-contour-lines',
+            type: 'line',
+            source: 'topo-contours',
+            'source-layer': 'contours',
+            minzoom: minContourZoom,
+            paint: {
+              'line-color': 'rgba(104, 82, 56, 0.32)',
+              'line-width': ['match', ['get', 'level'], 1, 1.2, 0.55],
+            },
+          },
+          beforeTrackId
+        );
+      }
+    } catch {
+      // Ignore if external DEM is unreachable
+    }
+  }, []);
+
   // Initialize MapLibre 2D Topographic Map
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
-    const demSource = ensureContourDemSource();
+    const isNarrow = window.innerWidth < 640;
+    // Cap pixelRatio at 2 so 3x/4x mobile screens render 2.25x faster with zero visible sharpness loss
+    const cappedDpr = Math.min(window.devicePixelRatio || 1, 2);
 
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
       style: OPENFREEMAP_STYLE,
       center: [10.65, 47.08],
-      zoom: 5.55,
-      minZoom: 1.7,
+      zoom: isNarrow ? 5.05 : 5.55,
+      minZoom: 1.6,
       maxZoom: 16,
+      pixelRatio: cappedDpr,
       pitch: 0,
       maxPitch: 0,
       dragRotate: false,
@@ -231,27 +342,48 @@ export const TopoMap: React.FC<TopoMapProps> = ({
 
     map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
 
+    let fallbackSettleTimer = 0;
+
     map.on('style.load', () => {
+      // Collapse attribution banner on mobile/tablet so it renders as a neat ⓘ icon without overlapping cards
+      if (window.innerWidth < 960 && mapContainerRef.current) {
+        const detailsEl = mapContainerRef.current.querySelector('.maplibregl-ctrl-attrib');
+        if (detailsEl) {
+          detailsEl.removeAttribute('open');
+          detailsEl.classList.remove('maplibregl-compact-show');
+        }
+      }
+
       const layers = map.getStyle().layers || [];
       const firstSymbolId = layers.find(
         (l: maplibregl.LayerSpecification) => l.type === 'symbol'
       )?.id;
+      const firstBoundaryIdx = layers.findIndex((l: maplibregl.LayerSpecification) =>
+        l.id.startsWith('boundary')
+      );
       const firstBoundaryId =
-        layers.find((l: maplibregl.LayerSpecification) => l.id.startsWith('boundary'))?.id ||
-        firstSymbolId;
-      const firstRoadId =
-        layers.find(
-          (l: maplibregl.LayerSpecification) =>
-            l.id.includes('road') || l.id.includes('highway') || l.id.includes('tunnel')
-        )?.id || firstSymbolId;
+        firstBoundaryIdx >= 0 ? layers[firstBoundaryIdx]?.id : firstSymbolId;
 
       if (map.getLayer('building-3d')) {
         map.setLayoutProperty('building-3d', 'visibility', 'none');
       }
 
-      // Save original vector symbol paint properties & enrich vector land/water for Topo mode
+      // Collect base vector layers underneath boundaries so we can disable them in Hybrid/Night modes (saves >50% GPU & vector decode!)
+      const coveredIds: string[] = [];
+      const cutoff = firstBoundaryIdx >= 0 ? firstBoundaryIdx : layers.length;
       const savedSymbols: Record<string, OriginalLabelStyle> = {};
-      for (const lyr of layers) {
+
+      for (let idx = 0; idx < layers.length; idx++) {
+        const lyr = layers[idx];
+        if (
+          idx < cutoff &&
+          lyr.type !== 'background' &&
+          lyr.type !== 'symbol' &&
+          lyr.id !== 'building-3d'
+        ) {
+          coveredIds.push(lyr.id);
+        }
+
         if (lyr.type === 'symbol') {
           savedSymbols[lyr.id] = {
             textColor: (map.getPaintProperty(lyr.id, 'text-color') ?? undefined) as
@@ -290,16 +422,17 @@ export const TopoMap: React.FC<TopoMapProps> = ({
           }
         }
       }
+      coveredBaseLayerIdsRef.current = coveredIds;
       symbolOriginalsRef.current = savedSymbols;
 
-      // 0. 2D Alpine Satellite Relief Raster Layer (for Hybrid & Night Topo modes)
+      // 1. Sharded 2D Alpine Satellite Relief Raster Layer (for Hybrid & Night Topo modes)
       if (!map.getSource('esri-world-imagery')) {
         map.addSource('esri-world-imagery', {
           type: 'raster',
-          tiles: [ESRI_WORLD_IMAGERY],
+          tiles: ESRI_WORLD_IMAGERY_TILES,
           tileSize: 256,
           maxzoom: 17,
-          attribution: 'Tiles © Esri, Maxar, Earthstar Geographics',
+          attribution: 'Tiles © Esri, Maxar',
         });
       }
 
@@ -311,6 +444,7 @@ export const TopoMap: React.FC<TopoMapProps> = ({
             source: 'esri-world-imagery',
             paint: {
               'raster-opacity': 1,
+              'raster-fade-duration': 220,
               'raster-saturation': 0.12,
               'raster-contrast': 0.14,
               'raster-brightness-max': 0.9,
@@ -318,76 +452,6 @@ export const TopoMap: React.FC<TopoMapProps> = ({
           },
           firstBoundaryId
         );
-      }
-
-      // 1. Topographic Relief Hillshading (Schummerung) & 2D Contour Isolines
-      try {
-        if (!map.getSource('topo-dem')) {
-          map.addSource('topo-dem', {
-            type: 'raster-dem',
-            tiles: [TERRARIUM_URL],
-            encoding: 'terrarium',
-            tileSize: 256,
-            maxzoom: 13,
-          });
-        }
-
-        if (!map.getLayer('topo-hillshade')) {
-          map.addLayer(
-            {
-              id: 'topo-hillshade',
-              type: 'hillshade',
-              source: 'topo-dem',
-              paint: {
-                'hillshade-exaggeration': 0.42,
-                'hillshade-illumination-direction': 315,
-                'hillshade-shadow-color': '#091322',
-                'hillshade-highlight-color': '#ffffff',
-                'hillshade-accent-color': '#38bdf8',
-              },
-            },
-            firstRoadId
-          );
-        }
-
-        if (!map.getSource('topo-contours')) {
-          map.addSource('topo-contours', {
-            type: 'vector',
-            tiles: [
-              demSource.contourProtocolUrl({
-                multiplier: 1,
-                thresholds: {
-                  8: [300, 1200],
-                  10: [150, 750],
-                  12: [50, 250],
-                },
-                elevationKey: 'ele',
-                levelKey: 'level',
-                contourLayer: 'contours',
-              }),
-            ],
-            maxzoom: 15,
-          });
-        }
-
-        if (!map.getLayer('topo-contour-lines')) {
-          map.addLayer(
-            {
-              id: 'topo-contour-lines',
-              type: 'line',
-              source: 'topo-contours',
-              'source-layer': 'contours',
-              minzoom: 8,
-              paint: {
-                'line-color': 'rgba(255, 255, 255, 0.24)',
-                'line-width': ['match', ['get', 'level'], 1, 1.25, 0.6],
-              },
-            },
-            firstSymbolId
-          );
-        }
-      } catch {
-        // Fallback cleanly if external DEM source is unreachable
       }
 
       // 2. Overview Bike Tracks Source & Layers
@@ -497,17 +561,33 @@ export const TopoMap: React.FC<TopoMapProps> = ({
       });
 
       setMapReady(true);
+      if (window.innerWidth < 960 && mapContainerRef.current) {
+        requestAnimationFrame(() => {
+          const detailsEl = mapContainerRef.current?.querySelector('.maplibregl-ctrl-attrib');
+          if (detailsEl) {
+            detailsEl.removeAttribute('open');
+            detailsEl.classList.remove('maplibregl-compact-show');
+          }
+        });
+      }
+      fallbackSettleTimer = window.setTimeout(() => setTilesSettled(true), 1200);
+    });
+
+    map.once('idle', () => {
+      setTilesSettled(true);
     });
 
     mapRef.current = map;
 
     return () => {
+      window.clearTimeout(fallbackSettleTimer);
       map.remove();
       mapRef.current = null;
+      topoDemMountedRef.current = false;
     };
   }, []);
 
-  // Keep cluster projection synced immediately as soon as map instance exists
+  // Keep cluster projection synced on pan, zoom & resize
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -521,18 +601,35 @@ export const TopoMap: React.FC<TopoMapProps> = ({
     };
   }, [mapReady, recomputeClusters]);
 
-  // Synchronize Map Theme (Hybrid Aerial Relief / Bright Alpine Topo / Dark Night Topo) + Season
+  // Synchronize Map Theme (Hybrid Aerial / Bright Topo / Dark Night) + Season
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
 
     const isImagery = mapTheme === 'hybrid' || mapTheme === 'night';
 
+    // Lazily attach DEM hillshade & contours ONLY when user chooses 'topo' mode!
+    if (mapTheme === 'topo') {
+      mountTopoDemLayersIfNeeded(map);
+    }
+
     if (map.getLayer('background')) {
       try {
         map.setPaintProperty('background', 'background-color', isImagery ? '#0d1b2a' : '#e7efe5');
       } catch {
         // ignore
+      }
+    }
+
+    // Toggle covered OpenFreeMap road/landcover layers OFF in Hybrid/Night modes to save >50% mobile GPU/CPU
+    const baseVis = isImagery ? 'none' : 'visible';
+    for (const lid of coveredBaseLayerIdsRef.current) {
+      if (map.getLayer(lid)) {
+        try {
+          map.setLayoutProperty(lid, 'visibility', baseVis);
+        } catch {
+          // ignore
+        }
       }
     }
 
@@ -553,10 +650,10 @@ export const TopoMap: React.FC<TopoMapProps> = ({
       }
     }
 
-    // Move hillshade & tune exaggeration per map theme
+    // DEM Hillshade & Contour visibility (active only in 'topo' mode!)
     if (map.getLayer('topo-hillshade')) {
+      map.setLayoutProperty('topo-hillshade', 'visibility', mapTheme === 'topo' ? 'visible' : 'none');
       if (mapTheme === 'topo') {
-        map.setPaintProperty('topo-hillshade', 'hillshade-exaggeration', 0.8);
         if (filterMode === 'summer') {
           map.setPaintProperty('topo-hillshade', 'hillshade-shadow-color', '#4c3828');
           map.setPaintProperty('topo-hillshade', 'hillshade-highlight-color', '#fffaf0');
@@ -570,24 +667,21 @@ export const TopoMap: React.FC<TopoMapProps> = ({
           map.setPaintProperty('topo-hillshade', 'hillshade-highlight-color', '#ffffff');
           map.setPaintProperty('topo-hillshade', 'hillshade-accent-color', '#5f8b6e');
         }
-      } else {
-        map.setPaintProperty('topo-hillshade', 'hillshade-exaggeration', 0.32);
-        map.setPaintProperty('topo-hillshade', 'hillshade-shadow-color', '#060d18');
-        map.setPaintProperty('topo-hillshade', 'hillshade-highlight-color', '#e0f2fe');
       }
     }
 
     if (map.getLayer('topo-contour-lines')) {
+      map.setLayoutProperty(
+        'topo-contour-lines',
+        'visibility',
+        mapTheme === 'topo' ? 'visible' : 'none'
+      );
       if (mapTheme === 'topo') {
         map.setPaintProperty(
           'topo-contour-lines',
           'line-color',
           filterMode === 'winter' ? 'rgba(38, 92, 142, 0.34)' : 'rgba(104, 82, 56, 0.34)'
         );
-      } else if (mapTheme === 'night') {
-        map.setPaintProperty('topo-contour-lines', 'line-color', 'rgba(125, 211, 252, 0.22)');
-      } else {
-        map.setPaintProperty('topo-contour-lines', 'line-color', 'rgba(255, 255, 255, 0.25)');
       }
     }
 
@@ -610,10 +704,10 @@ export const TopoMap: React.FC<TopoMapProps> = ({
             map.setPaintProperty(lyr.id, 'text-halo-width', orig.haloWidth);
         }
       } catch {
-        // Ignore non-text symbol layers (e.g. pure icon shields)
+        // Ignore non-text symbol layers
       }
     }
-  }, [mapTheme, filterMode, mapReady]);
+  }, [mapTheme, filterMode, mapReady, mountTopoDemLayersIfNeeded]);
 
   // Sync overview polylines for filtered Bike adventures
   const visibleSlugs = useMemo(() => new Set(adventures.map((a) => a.slug)), [adventures]);
@@ -632,8 +726,8 @@ export const TopoMap: React.FC<TopoMapProps> = ({
     for (const adv of adventures) {
       if (!visibleSlugs.has(adv.slug)) continue;
       if (selectedAdventure?.slug === adv.slug) continue;
-      const track = overviewTracks[adv.slug];
-      if (!track || track.points.length < 2) continue;
+      const coords = overviewBundle[adv.slug];
+      if (!coords || coords.length < 2) continue;
 
       features.push({
         type: 'Feature',
@@ -644,13 +738,63 @@ export const TopoMap: React.FC<TopoMapProps> = ({
         },
         geometry: {
           type: 'LineString',
-          coordinates: track.points.map((p): [number, number] => [p[0], p[1]]),
+          coordinates: coords,
         },
       });
     }
 
     src.setData({ type: 'FeatureCollection', features });
-  }, [adventures, visibleSlugs, overviewTracks, selectedAdventure, mapReady]);
+  }, [adventures, visibleSlugs, overviewBundle, selectedAdventure, mapReady]);
+
+  // Compute responsive camera padding for Phone (peek/half/full), Tablet Portrait, Tablet Landscape & Desktop
+  const computeCameraPadding = useCallback(() => {
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    if (vw < 640) {
+      const sheetFrac = !isSheetOpen
+        ? 0.16
+        : mobileSnap === 'peek'
+          ? 0.36
+          : mobileSnap === 'half'
+            ? 0.61
+            : 0.65;
+      return {
+        top: 106,
+        bottom: Math.round(vh * sheetFrac) + 18,
+        left: 26,
+        right: 26,
+      };
+    }
+
+    if (vw < 860) {
+      // Tablet Portrait: centered bottom sheet
+      return {
+        top: 112,
+        bottom: isSheetOpen ? Math.round(vh * 0.48) + 20 : 105,
+        left: 44,
+        right: 44,
+      };
+    }
+
+    if (vw < 1100) {
+      // Tablet Landscape / Small Laptop: slim right sheet (386px)
+      return {
+        top: 112,
+        bottom: 110,
+        left: 48,
+        right: isSheetOpen ? 420 : 54,
+      };
+    }
+
+    // Desktop & 4K
+    return {
+      top: 116,
+      bottom: 120,
+      left: 64,
+      right: isSheetOpen ? Math.min(500, Math.round(vw * 0.34) + 36) : 64,
+    };
+  }, [isSheetOpen, mobileSnap]);
 
   // Sync active selected route / stage track & fit camera smoothly
   useEffect(() => {
@@ -664,10 +808,7 @@ export const TopoMap: React.FC<TopoMapProps> = ({
       return;
     }
 
-    const isMobile = window.innerWidth < 860;
-    const padding = isMobile
-      ? { top: 110, bottom: isSheetOpen ? 360 : 90, left: 36, right: 36 }
-      : { top: 115, bottom: 120, left: 60, right: isSheetOpen ? 480 : 60 };
+    const padding = computeCameraPadding();
 
     if (activeTrack && activeTrack.points.length >= 2) {
       const coords = activeTrack.points.map((p): [number, number] => [p[0], p[1]]);
@@ -700,35 +841,40 @@ export const TopoMap: React.FC<TopoMapProps> = ({
         ],
       });
 
-      map.fitBounds(
-        [
-          [activeTrack.bbox[0], activeTrack.bbox[1]],
-          [activeTrack.bbox[2], activeTrack.bbox[3]],
-        ],
-        { padding, maxZoom: 13.2, duration: 1050 }
-      );
+      if (mobileSnap !== 'full' || window.innerWidth >= 860) {
+        map.fitBounds(
+          [
+            [activeTrack.bbox[0], activeTrack.bbox[1]],
+            [activeTrack.bbox[2], activeTrack.bbox[3]],
+          ],
+          { padding, maxZoom: 13.2, duration: 850 }
+        );
+      }
     } else {
       src.setData({ type: 'FeatureCollection', features: [] });
-      map.flyTo({
-        center: selectedAdventure.coordinates,
-        zoom: selectedAdventure.zoomLevel ?? 11.2,
-        padding,
-        duration: 1050,
-      });
+      if (mobileSnap !== 'full' || window.innerWidth >= 860) {
+        map.flyTo({
+          center: selectedAdventure.coordinates,
+          zoom: selectedAdventure.zoomLevel ?? 11.2,
+          padding,
+          duration: 850,
+        });
+      }
     }
-  }, [selectedAdventure, activeTrack, isSheetOpen, mapReady]);
+  }, [selectedAdventure, activeTrack, isSheetOpen, mobileSnap, mapReady, computeCameraPadding]);
 
   // Handle explicit region jump requests
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady || !flyRequest) return;
+    const vw = window.innerWidth;
     map.flyTo({
       center: flyRequest.center,
-      zoom: flyRequest.zoom,
-      padding: { top: 85, bottom: 95, left: 40, right: isSheetOpen ? 470 : 40 },
-      duration: 1100,
+      zoom: vw < 640 ? Math.max(1.5, flyRequest.zoom - 0.55) : flyRequest.zoom,
+      padding: computeCameraPadding(),
+      duration: 950,
     });
-  }, [flyRequest, isSheetOpen, mapReady]);
+  }, [flyRequest, mapReady, computeCameraPadding]);
 
   // Live Elevation Profile Hover Puck on the Map
   useEffect(() => {
@@ -778,21 +924,33 @@ export const TopoMap: React.FC<TopoMapProps> = ({
     }
     const span = Math.max(maxLng - minLng, maxLat - minLat);
     if (span < 0.05) {
-      map.flyTo({ center: [cluster.lng, cluster.lat], zoom: map.getZoom() + 2.4, duration: 750 });
+      map.flyTo({ center: [cluster.lng, cluster.lat], zoom: map.getZoom() + 2.4, duration: 700 });
     } else {
       map.fitBounds(
         [
           [minLng, minLat],
           [maxLng, maxLat],
         ],
-        { padding: 110, maxZoom: 11.5, duration: 850 }
+        { padding: window.innerWidth < 640 ? 64 : 110, maxZoom: 11.5, duration: 750 }
       );
     }
   };
 
   return (
     <div className="topo-stage">
-      <div ref={mapContainerRef} id="topo-world-map" className="topo-canvas" />
+      <div
+        ref={mapContainerRef}
+        id="topo-world-map"
+        className={`topo-canvas ${tilesSettled ? 'topo-canvas--ready' : ''}`}
+      />
+
+      {/* Smooth initial loading indicator while first tiles stream in on mobile */}
+      {!tilesSettled && (
+        <div className="map-loading-pill" aria-live="polite">
+          <span className="map-loading-pill__spinner" />
+          <span>Karte wird geladen…</span>
+        </div>
+      )}
 
       {/* Subtle seasonal atmospheric tint overlay */}
       <div className="topo-season-veil" aria-hidden="true" />
@@ -862,20 +1020,23 @@ export const TopoMap: React.FC<TopoMapProps> = ({
         })}
       </div>
 
-      {/* Right-Side Map Style & Camera Liquid Glass Stack */}
-      <div className="map-controls-stack">
-        {/* 2D Map Atmosphere Switcher (Apple Maps Hybrid / Topo / Night) */}
+      {/* Right-Side Map Style & Camera Liquid Glass Stack (Desktop/Tablet full + Mobile compact zero-collision) */}
+      <div
+        className={`map-controls-stack ${isSheetOpen || isFilterOpen ? 'map-controls-stack--overlay-open' : ''}`}
+      >
+        {/* Desktop & Tablet (>= 640px): 3-Way Map Atmosphere Switcher */}
         <LiquidGlass
           variant="clear"
           radius={22}
-          className="map-style-pill"
+          opticalLens={isDesktop}
+          className="map-style-pill map-style-pill--desktop"
           aria-label="Kartenstil wählen"
         >
           <button
             id="map-theme-hybrid-btn"
             type="button"
             className={`map-style-btn ${mapTheme === 'hybrid' ? 'map-style-btn--active' : ''}`}
-            title="Alpin-Hybrid (Luftbild + Höhenlinien)"
+            title="Alpin-Hybrid (Luftbild + Orte)"
             aria-label="Alpin-Hybrid"
             onClick={() => onChangeMapTheme('hybrid')}
           >
@@ -886,7 +1047,7 @@ export const TopoMap: React.FC<TopoMapProps> = ({
             id="map-theme-topo-btn"
             type="button"
             className={`map-style-btn ${mapTheme === 'topo' ? 'map-style-btn--active' : ''}`}
-            title="Klassische 2D-Topografie mit Schummerung"
+            title="Klassische 2D-Topografie mit Schummerung & Höhenlinien"
             aria-label="2D-Topografie"
             onClick={() => onChangeMapTheme('topo')}
           >
@@ -906,11 +1067,12 @@ export const TopoMap: React.FC<TopoMapProps> = ({
           </button>
         </LiquidGlass>
 
-        {/* Zoom & World Reset Capsule */}
+        {/* Desktop & Tablet (>= 640px): Zoom + World Reset Capsule */}
         <LiquidGlass
           variant="clear"
           radius={22}
-          className="map-controls-pill"
+          opticalLens={isDesktop}
+          className="map-controls-pill map-controls-pill--desktop"
           aria-label="Kartensteuerung"
         >
           <button
@@ -919,7 +1081,7 @@ export const TopoMap: React.FC<TopoMapProps> = ({
             className="map-ctrl-btn"
             title="Hineinzoomen"
             aria-label="Hineinzoomen"
-            onClick={() => mapRef.current?.zoomIn({ duration: 280 })}
+            onClick={() => mapRef.current?.zoomIn({ duration: 260 })}
           >
             <Plus size={17} />
           </button>
@@ -930,7 +1092,7 @@ export const TopoMap: React.FC<TopoMapProps> = ({
             className="map-ctrl-btn"
             title="Herauszoomen"
             aria-label="Herauszoomen"
-            onClick={() => mapRef.current?.zoomOut({ duration: 280 })}
+            onClick={() => mapRef.current?.zoomOut({ duration: 260 })}
           >
             <Minus size={17} />
           </button>
@@ -945,7 +1107,51 @@ export const TopoMap: React.FC<TopoMapProps> = ({
               mapRef.current?.flyTo({
                 center: REGION_PRESETS.world.center,
                 zoom: REGION_PRESETS.world.zoom,
-                duration: 950,
+                duration: 900,
+              })
+            }
+          >
+            <Compass size={17} />
+          </button>
+        </LiquidGlass>
+
+        {/* Mobile (< 640px): Compact 2-Button Quick Capsule (Pinch-to-Zoom handles zoom!) */}
+        <LiquidGlass
+          variant="clear"
+          radius={999}
+          opticalLens={false}
+          className="map-mobile-quick-pill"
+          aria-label="Mobile Karten-Schnellsteuerung"
+        >
+          <button
+            id="mobile-cycle-map-theme-btn"
+            type="button"
+            className="map-mobile-quick-btn"
+            title={`Kartenstil wechseln (aktuell: ${MAP_THEME_SHORT[mapTheme]})`}
+            aria-label={`Kartenstil wechseln, aktuell ${MAP_THEME_SHORT[mapTheme]}`}
+            onClick={() => onChangeMapTheme(NEXT_MAP_THEME[mapTheme])}
+          >
+            {mapTheme === 'hybrid' ? (
+              <Layers size={17} />
+            ) : mapTheme === 'topo' ? (
+              <Mountain size={17} />
+            ) : (
+              <Moon size={17} />
+            )}
+            <span>{MAP_THEME_SHORT[mapTheme]}</span>
+          </button>
+          <div className="map-ctrl-divider" />
+          <button
+            id="mobile-reset-world-btn"
+            type="button"
+            className="map-mobile-quick-btn"
+            title="Weltübersicht"
+            aria-label="Auf Weltübersicht zoomen"
+            onClick={() =>
+              mapRef.current?.flyTo({
+                center: REGION_PRESETS.world.center,
+                zoom: 1.7,
+                duration: 850,
               })
             }
           >
@@ -956,3 +1162,5 @@ export const TopoMap: React.FC<TopoMapProps> = ({
     </div>
   );
 };
+
+export default TopoMap;

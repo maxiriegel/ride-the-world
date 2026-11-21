@@ -200,7 +200,7 @@ export const LiquidGlass: React.FC<LiquidGlassProps> = ({
   return (
     <Component
       ref={containerRef}
-      className={`lg-surface lg-surface--${variant} ${interactive ? 'lg-surface--interactive' : ''} ${className}`}
+      className={`lg-surface lg-surface--${variant} ${!(useLens && lensUrl) ? 'lg-surface--fallback' : ''} ${interactive ? 'lg-surface--interactive' : ''} ${className}`}
       style={backdropStyle}
       onPointerMove={handlePointerMove}
       {...rest}
