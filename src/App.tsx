@@ -88,6 +88,7 @@ export const App: React.FC = () => {
   const activeTrack = targetTrackUrl ? trackMap[targetTrackUrl] ?? null : null;
 
   // Safeguard against accidental "Desktop site" checkbox on small physical smartphones
+  // and continuously sync live visualViewport height so bottom browser address bars never cover UI!
   useEffect(() => {
     const syncForcedDesktopPhone = () => {
       const isCoarse = window.matchMedia?.('(pointer: coarse)').matches;
@@ -102,7 +103,32 @@ export const App: React.FC = () => {
         }
       }
     };
+
+    const syncVisualViewportHeight = () => {
+      const vv = window.visualViewport;
+      const visibleH =
+        vv && (!vv.scale || vv.scale <= 1.05)
+          ? Math.min(window.innerHeight, vv.height)
+          : window.innerHeight;
+      if (visibleH > 120) {
+        document.documentElement.style.setProperty('--app-vh', `${Math.round(visibleH)}px`);
+      }
+    };
+
     syncForcedDesktopPhone();
+    syncVisualViewportHeight();
+
+    window.addEventListener('resize', syncVisualViewportHeight);
+    window.addEventListener('orientationchange', syncVisualViewportHeight);
+    window.visualViewport?.addEventListener('resize', syncVisualViewportHeight);
+    window.visualViewport?.addEventListener('scroll', syncVisualViewportHeight);
+
+    return () => {
+      window.removeEventListener('resize', syncVisualViewportHeight);
+      window.removeEventListener('orientationchange', syncVisualViewportHeight);
+      window.visualViewport?.removeEventListener('resize', syncVisualViewportHeight);
+      window.visualViewport?.removeEventListener('scroll', syncVisualViewportHeight);
+    };
   }, []);
 
   // Sync season & mapTheme attributes on <html> for adaptive Liquid Glass & ink tokens

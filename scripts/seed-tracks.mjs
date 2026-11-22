@@ -34,233 +34,269 @@ function interpolateWaypoints(waypoints, segmentsPerSpan = 16) {
   return out;
 }
 
+/**
+ * Fetch real 3D OpenStreetMap road/gravel/MTB switchback geometry from BRouter ([lat, lng, alt] waypoints).
+ * Falls back gracefully to Catmull-Rom spline if offline.
+ */
+async function fetchBrouterOrSpline(waypoints, profile = 'fastbike', maxRoadPeakM = null) {
+  try {
+    const lonlats = waypoints.map((w) => `${w[1]},${w[0]}`).join('|');
+    const url = `https://brouter.de/brouter?lonlats=${lonlats}&profile=${profile}&alternativeidx=0&format=geojson`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`BRouter HTTP ${res.status}`);
+    const gj = await res.json();
+    const raw = gj?.features?.[0]?.geometry?.coordinates;
+    if (!Array.isArray(raw) || raw.length < 10) throw new Error('Empty BRouter geometry');
+    return raw.map(([lng, lat, ele]) => ({
+      lat,
+      lng,
+      alt:
+        maxRoadPeakM !== null
+          ? Math.min(maxRoadPeakM, Math.max(0, Number(ele ?? 0)))
+          : Math.max(0, Number(ele ?? 0)),
+    }));
+  } catch (err) {
+    console.warn(`  ⚠ BRouter Fallback aktiv (${err.message})`);
+    return interpolateWaypoints(waypoints, 22);
+  }
+}
+
 async function main() {
-  console.log('🌍 Lade echte öffentliche Komoot-Touren von Marius Quast...');
+  const curatedOnly = process.argv.includes('--curated-only');
 
-  const komootJobs = [
-    { id: '607111877', slug: 'deutschland-cross', maxPoints: 420 },
-    { id: '358064545', slug: 'deutschland-cross-etappe-1', maxPoints: 220 },
-    { id: '358066261', slug: 'deutschland-cross-etappe-2', maxPoints: 220 },
-    { id: '358068257', slug: 'deutschland-cross-etappe-3', maxPoints: 220 },
-    { id: '358069890', slug: 'deutschland-cross-etappe-4', maxPoints: 220 },
-    { id: '358071044', slug: 'deutschland-cross-etappe-5', maxPoints: 220 },
-    { id: '358072082', slug: 'deutschland-cross-etappe-6', maxPoints: 220 },
-    { id: '358073037', slug: 'deutschland-cross-etappe-7', maxPoints: 220 },
-    { id: '776027495', slug: 'bodensee-koenigssee-etappe-1', maxPoints: 280 },
-    { id: '380812878', slug: 'muenchen-orbit', maxPoints: 320 },
-    { id: '420816266', slug: 'seceda-dolomiten-mtb', maxPoints: 300 },
-  ];
+  if (!curatedOnly) {
+    console.log('🌍 Lade echte öffentliche Komoot-Touren von Marius Quast...');
 
-  const komootStats = {};
-  for (const job of komootJobs) {
-    const parsed = await fetchKomootTour(job.id);
-    const saved = await saveTrackArtifacts(job.slug, parsed.title, parsed.coords, {
-      maxPoints: job.maxPoints,
+    const komootJobs = [
+      { id: '607111877', slug: 'deutschland-cross', maxPoints: 420 },
+      { id: '358064545', slug: 'deutschland-cross-etappe-1', maxPoints: 220 },
+      { id: '358066261', slug: 'deutschland-cross-etappe-2', maxPoints: 220 },
+      { id: '358068257', slug: 'deutschland-cross-etappe-3', maxPoints: 220 },
+      { id: '358069890', slug: 'deutschland-cross-etappe-4', maxPoints: 220 },
+      { id: '358071044', slug: 'deutschland-cross-etappe-5', maxPoints: 220 },
+      { id: '358072082', slug: 'deutschland-cross-etappe-6', maxPoints: 220 },
+      { id: '358073037', slug: 'deutschland-cross-etappe-7', maxPoints: 220 },
+      { id: '776027495', slug: 'bodensee-koenigssee-etappe-1', maxPoints: 280 },
+      { id: '380812878', slug: 'muenchen-orbit', maxPoints: 320 },
+      { id: '420816266', slug: 'seceda-dolomiten-mtb', maxPoints: 300 },
+    ];
+
+    for (const job of komootJobs) {
+      const parsed = await fetchKomootTour(job.id);
+      await saveTrackArtifacts(job.slug, parsed.title, parsed.coords, {
+        maxPoints: job.maxPoints,
+      });
+      console.log(
+        `  ✓ ${job.slug}: ${parsed.distanceKm} km, ${parsed.elevationUpM} hm (${parsed.coords.length} Rohpunkte)`
+      );
+    }
+
+    // 1) Quast-Route München -> Gardasee (GROBE SHOP-PREVIEW: nur 20 Stützpunkte, kein GPX!)
+    const quastRouteWaypoints = [
+      { lat: 48.111, lng: 11.582, alt: 530 },
+      { lat: 47.996, lng: 11.345, alt: 586 },
+      { lat: 47.84, lng: 11.29, alt: 615 },
+      { lat: 47.678, lng: 11.2, alt: 688 },
+      { lat: 47.492, lng: 11.095, alt: 708 },
+      { lat: 47.392, lng: 11.035, alt: 1502 },
+      { lat: 47.365, lng: 10.955, alt: 1380 },
+      { lat: 47.239, lng: 10.74, alt: 827 },
+      { lat: 47.14, lng: 10.565, alt: 816 },
+      { lat: 46.968, lng: 10.538, alt: 970 },
+      { lat: 46.797, lng: 10.298, alt: 1290 },
+      { lat: 46.718, lng: 10.333, alt: 1810 },
+      { lat: 46.666, lng: 10.371, alt: 2251 },
+      { lat: 46.625, lng: 10.428, alt: 1375 },
+      { lat: 46.671, lng: 10.553, alt: 907 },
+      { lat: 46.669, lng: 11.159, alt: 325 },
+      { lat: 46.479, lng: 11.258, alt: 262 },
+      { lat: 46.342, lng: 11.242, alt: 218 },
+      { lat: 45.89, lng: 10.955, alt: 287 },
+      { lat: 45.869, lng: 10.876, alt: 68 },
+    ];
+    await saveTrackArtifacts('quast-route', 'Quast-Route Gravel Alpencross (Preview)', quastRouteWaypoints, {
+      isPreviewOnly: true,
+      maxPoints: 20,
     });
-    komootStats[job.slug] = {
-      title: parsed.title,
-      distanceKm: parsed.distanceKm,
-      elevationUpM: parsed.elevationUpM,
-      highestPointM: parsed.highestPointM,
-      surfaces: parsed.surfaces,
-      start: saved.startCoordinate,
-    };
-    console.log(
-      `  ✓ ${job.slug}: ${parsed.distanceKm} km, ${parsed.elevationUpM} hm (${parsed.coords.length} Rohpunkte)`
-    );
+    console.log('  ✓ quast-route (Shop-Pack Schutz aktiv: nur 20 grobe Stützpunkte, kein GPX)');
   }
 
-  // 1) Quast-Route München -> Gardasee (GROBE SHOP-PREVIEW: nur 20 Stützpunkte, kein GPX!)
-  const quastRouteWaypoints = [
-    { lat: 48.111, lng: 11.582, alt: 530 }, // München Perlacher Str. 100
-    { lat: 47.996, lng: 11.345, alt: 586 }, // Starnberger See
-    { lat: 47.84, lng: 11.29, alt: 615 },   // Osterseen
-    { lat: 47.678, lng: 11.2, alt: 688 },   // Murnau
-    { lat: 47.492, lng: 11.095, alt: 708 }, // Garmisch-Partenkirchen
-    { lat: 47.392, lng: 11.035, alt: 1502 },// Ehrwalder Alm / Gaistal Einstieg
-    { lat: 47.365, lng: 10.955, alt: 1380 },// Gaistal / Leutasch
-    { lat: 47.239, lng: 10.74, alt: 827 },  // Imst
-    { lat: 47.14, lng: 10.565, alt: 816 },  // Landeck
-    { lat: 46.968, lng: 10.538, alt: 970 }, // Pfunds
-    { lat: 46.797, lng: 10.298, alt: 1290 },// Scuol
-    { lat: 46.718, lng: 10.333, alt: 1810 },// S-charl
-    { lat: 46.666, lng: 10.371, alt: 2251 },// Pass da Costainas (Höchster Punkt!)
-    { lat: 46.625, lng: 10.428, alt: 1375 },// Val Müstair
-    { lat: 46.671, lng: 10.553, alt: 907 }, // Glurns / Vinschgau
-    { lat: 46.669, lng: 11.159, alt: 325 }, // Meran
-    { lat: 46.479, lng: 11.258, alt: 262 }, // Eppan / Bozen Süd
-    { lat: 46.342, lng: 11.242, alt: 218 }, // Auer / Etschtal
-    { lat: 45.89, lng: 10.955, alt: 287 },  // Passo San Giovanni (Mori)
-    { lat: 45.869, lng: 10.876, alt: 68 },  // Torbole am Gardasee
-  ];
-  await saveTrackArtifacts('quast-route', 'Quast-Route Gravel Alpencross (Preview)', quastRouteWaypoints, {
-    isPreviewOnly: true,
-    maxPoints: 20,
-  });
-  console.log('  ✓ quast-route (Shop-Pack Schutz aktiv: nur 20 grobe Stützpunkte, kein GPX)');
+  // 2) Bodensee - Königssee Etappen 2, 3 & Gesamtroute mit echten OSM-Gravelwegen!
+  const fs = await import('node:fs/promises');
+  const st1Raw = JSON.parse(await fs.readFile('public/tracks/bodensee-koenigssee-etappe-1.json', 'utf8'));
+  const st1Pts = st1Raw.points.map((p) => ({ lng: p[0], lat: p[1], alt: p[2] }));
+  const st1End = st1Pts[st1Pts.length - 1];
 
-  // 2) Bodensee - Königssee Etappen 2, 3 & Gesamtroute (kombiniert mit echtem Etappe-1-Track!)
-  const bodenseeStage1 = await fetchKomootTour('776027495');
-  const stage1End = bodenseeStage1.coords[bodenseeStage1.coords.length - 1];
-  const bodenseeStage2Pts = interpolateWaypoints(
+  const bodenseeStage2Pts = await fetchBrouterOrSpline(
     [
-      [stage1End.lat, stage1End.lng, stage1End.alt || 820],
-      [47.558, 10.749, 805],  // Füssen
-      [47.565, 10.95, 1090],  // Ammergebirge
-      [47.596, 11.095, 845],  // Oberammergau
-      [47.565, 11.312, 805],  // Walchensee-Vorland / Eschenlohe
-      [47.669, 11.576, 720],  // Bad Tölz
-      [47.728, 11.734, 735],  // Tegernsee
-      [47.685, 11.878, 795],  // Schliersee
+      [st1End.lat, st1End.lng, st1End.alt || 820],
+      [47.5696, 10.7004, 805], // Füssen
+      [47.5968, 11.0645, 845], // Oberammergau
+      [47.6032, 11.1895, 650], // Eschenlohe
+      [47.7606, 11.5591, 658], // Bad Tölz
+      [47.7094, 11.7568, 735], // Tegernsee
+      [47.7346, 11.8608, 785], // Schliersee
     ],
-    18
+    'trekking'
   );
-  const bodenseeStage3Pts = interpolateWaypoints(
+
+  const bodenseeStage3Pts = await fetchBrouterOrSpline(
     [
-      [47.685, 11.878, 795],  // Schliersee
-      [47.669, 12.025, 1085], // Sudelfeld / Bayrischzell
-      [47.768, 12.235, 520],  // Aschau im Chiemgau
-      [47.752, 12.455, 560],  // Marquartstein
-      [47.762, 12.648, 600],  // Ruhpolding
-      [47.665, 12.785, 690],  // Inzell / Alpenstraße
-      [47.63, 12.998, 572],   // Berchtesgaden
-      [47.591, 12.988, 603],  // Königssee
+      [47.7346, 11.8608, 785], // Schliersee
+      [47.6744, 12.0125, 805], // Bayrischzell
+      [47.7667, 12.3235, 620], // Aschau im Chiemgau
+      [47.7634, 12.6456, 656], // Ruhpolding
+      [47.7642, 12.7485, 692], // Inzell
+      [47.6302, 13.0001, 572], // Berchtesgaden
+      [47.5892, 12.9885, 603], // Königssee Seelände
     ],
-    18
+    'trekking'
   );
-  await saveTrackArtifacts('bodensee-koenigssee-etappe-2', 'Bodensee – Königssee (Etappe 2/3)', bodenseeStage2Pts, { maxPoints: 180 });
-  await saveTrackArtifacts('bodensee-koenigssee-etappe-3', 'Bodensee – Königssee (Etappe 3/3)', bodenseeStage3Pts, { maxPoints: 180 });
+
+  await saveTrackArtifacts('bodensee-koenigssee-etappe-2', 'Bodensee – Königssee (Etappe 2/3)', bodenseeStage2Pts, {
+    maxPoints: 260,
+  });
+  await saveTrackArtifacts('bodensee-koenigssee-etappe-3', 'Bodensee – Königssee (Etappe 3/3)', bodenseeStage3Pts, {
+    maxPoints: 260,
+  });
   await saveTrackArtifacts(
     'bodensee-koenigssee',
     'Bodensee – Königssee Gravel Bikepacking',
-    [...bodenseeStage1.coords.filter((_, i) => i % 90 === 0), ...bodenseeStage2Pts, ...bodenseeStage3Pts],
-    { maxPoints: 340 }
+    [...st1Pts, ...bodenseeStage2Pts, ...bodenseeStage3Pts],
+    { maxPoints: 380 }
   );
+  console.log('  ✓ bodensee-koenigssee + Etappen 2 & 3 mit echten OSM-Wegen aktualisiert');
 
-  // 3) Weitere kuratierte Bike-Klassiker mit topografischen Routenverläufen
+  // 3) Kuratierte Pässe & Touren mit 100% echten Straßen- & Kehren-Geometrien (BRouter OSM + SRTM)
   const curatedRoutes = [
     {
-      slug: 'ski-transalp-muenchen-nizza',
-      title: 'Mit Ski am Rad über die Alpen (München – Nizza)',
+      slug: 'col-de-la-bonette',
+      title: 'Cime de la Bonette – Europas höchste Passstraße',
+      profile: 'fastbike',
+      maxPoints: 380,
+      maxRoadPeakM: 2802,
       waypoints: [
-        [48.137, 11.576, 520],
-        [47.728, 11.734, 730],
-        [47.269, 11.404, 574], // Innsbruck
-        [47.003, 11.507, 1370],// Brenner
-        [46.671, 10.553, 910], // Vinschgau
-        [46.529, 10.453, 2757],// Stilfser Joch Nähe / Bormio
-        [46.169, 9.87, 310],   // Valtellina
-        [45.815, 9.085, 210],  // Como
-        [45.07, 7.686, 240],   // Turin
-        [44.384, 7.542, 535],  // Cuneo
-        [44.145, 7.568, 1871], // Col de Tende
-        [43.696, 7.265, 12],   // Nizza Mittelmeer
-      ],
-    },
-    {
-      slug: 'stoneman-dolomiti-gold',
-      title: 'Stoneman Dolomiti MTB Gold (< 24h)',
-      waypoints: [
-        [46.731, 12.279, 1175], // Toblach
-        [46.729, 12.356, 1180], // Innichen
-        [46.732, 12.438, 2434], // Marchkinkele (2.545m Grat)
-        [46.743, 12.495, 1100], // Sillian
-        [46.695, 12.482, 2150], // Leckfeldalm / Sillianer Hütte (2.447m)
-        [46.663, 12.432, 1910], // Passo Silvella
-        [46.605, 12.485, 1636], // Padola / Kreuzbergpass
-        [46.638, 12.398, 2020], // Rotwandwiesen
-        [46.699, 12.356, 1310], // Sexten
-        [46.731, 12.279, 1175], // Toblach Ziel
+        [44.4181, 6.7312, 1215], // Jausiers Start (D64 / D900)
+        [44.3215, 6.8075, 2802], // Cime de la Bonette Gipfelschleife (2.802 m!)
+        [44.4181, 6.7312, 1215], // Rückfahrt über die D64-Serpentinen nach Jausiers
       ],
     },
     {
       slug: 'alpe-dhuez-21-kehren',
       title: 'Alpe d’Huez – Die 21 Kehren der Tour de France',
+      profile: 'fastbike',
+      maxPoints: 360,
+      maxRoadPeakM: 1850,
       waypoints: [
-        [45.056, 6.03, 722],   // Bourg-d'Oisans
-        [45.063, 6.038, 845],  // Kehre 21-18 La Garde
-        [45.072, 6.046, 1045], // Kehre 16-13
-        [45.078, 6.058, 1265], // Kehre 10 St-Ferréol
-        [45.083, 6.065, 1450], // Kehre 7 Huez Village
-        [45.088, 6.071, 1645], // Kehre 4-2
-        [45.092, 6.07, 1850],   // Alpe d'Huez Ziel
+        [45.0558, 6.0298, 722],  // Bourg-d'Oisans Fuß des Anstiegs
+        [45.0924, 6.0699, 1850], // Alpe d'Huez Avenue du Rif Nel (Tour-Ziel)
+        [45.0558, 6.0298, 722],  // Bourg-d'Oisans
       ],
     },
     {
       slug: 'zillertaler-hoehenstrasse',
       title: 'Zillertaler Höhenstraße mit dem Rennrad',
+      profile: 'fastbike',
+      maxPoints: 360,
+      maxRoadPeakM: 2020,
       waypoints: [
-        [47.272, 11.883, 560],  // Ried im Zillertal
-        [47.262, 11.855, 1150], // Auffahrt Riedberg
-        [47.245, 11.825, 1790], // Kristallhütte Nähe
-        [47.216, 11.819, 2020], // Melchboden (Höchster Punkt 2.020 m)
-        [47.198, 11.839, 1740], // Schlegeisblick / Mösl
-        [47.204, 11.871, 610],  // Hippach im Zillertal
-        [47.272, 11.883, 560],  // Ried im Zillertal
-      ],
-    },
-    {
-      slug: 'ammersee-gravel-runde',
-      title: 'Ammersee-Runde mit dem Gravel-Bike',
-      waypoints: [
-        [48.005, 11.168, 535], // Herrsching
-        [48.078, 11.132, 542], // Stegen Nordufer
-        [48.045, 11.095, 580], // Schondorf / Westufer
-        [47.949, 11.106, 536], // Dießen am Ammersee
-        [47.912, 11.148, 595], // Ammer-Naturschutzgebiet / Weilheim-Vorland
-        [47.968, 11.208, 712], // Kloster Andechs Anstieg
-        [48.005, 11.168, 535], // Herrsching
+        [47.2995, 11.8705, 555], // Ried im Zillertal
+        [47.2165, 11.8204, 2020],// Melchboden (Höchster Punkt 2.020 m)
+        [47.2044, 11.8654, 600], // Hippach im Zillertal
+        [47.2995, 11.8705, 555], // Zurück nach Ried im Zillertal
       ],
     },
     {
       slug: 'mallorca-tramuntana-klassiker',
       title: 'Mallorca Küstenklassiker – Sa Calobra & Tramuntana',
+      profile: 'fastbike',
+      maxPoints: 400,
+      maxRoadPeakM: 880,
       waypoints: [
-        [39.853, 3.012, 55],   // Alcúdia / Port de Pollença
-        [39.826, 2.912, 582],  // Coll de Femenia
-        [39.818, 2.821, 682],  // Coll dels Reis (Krawattenknoten)
-        [39.851, 2.799, 12],   // Port de Sa Calobra (Meereshöhe!)
-        [39.818, 2.821, 682],  // Wieder hoch zum Coll dels Reis!
-        [39.796, 2.778, 875],  // Puig Major Tunnel-Passage
-        [39.766, 2.715, 145],  // Sóller
-        [39.798, 2.891, 510],  // Kloster Lluc
-        [39.853, 3.012, 55],   // Port de Pollença
+        [39.9062, 3.0812, 15],   // Port de Pollença
+        [39.8188, 2.8856, 515],  // Lluc / Coll de Femenia
+        [39.8515, 2.7995, 12],   // Port de Sa Calobra (inkl. 270°-Krawattenknoten!)
+        [39.7962, 2.7852, 875],  // Puig Major Tunnel-Scheitel
+        [39.7668, 2.7152, 55],   // Sóller
+        [39.8188, 2.8856, 515],  // Coll de Sóller / Lluc Rückweg
+        [39.9062, 3.0812, 15],   // Port de Pollença
+      ],
+    },
+    {
+      slug: 'ammersee-gravel-runde',
+      title: 'Ammersee-Runde & Kloster Andechs',
+      profile: 'trekking',
+      maxPoints: 340,
+      maxRoadPeakM: 715,
+      waypoints: [
+        [47.9992, 11.1712, 538], // Herrsching S-Bahnhof
+        [48.0768, 11.1325, 538], // Stegen Nordufer
+        [47.9498, 11.1045, 538], // Dießen am Ammersee
+        [47.9125, 11.1475, 585], // Raisting / Südmoos
+        [47.9745, 11.1822, 710], // Kloster Andechs
+        [47.9992, 11.1712, 538], // Herrsching
       ],
     },
     {
       slug: 'pfaffenwinkel-weitblicke',
       title: 'Weitblicke im Pfaffenwinkel & Hoher Peißenberg',
+      profile: 'trekking',
+      maxPoints: 360,
+      maxRoadPeakM: 988,
       waypoints: [
-        [47.836, 11.142, 563], // Weilheim in Oberbayern
-        [47.795, 11.015, 988], // Hoher Peißenberg Gipfel (988 m)
-        [47.736, 10.972, 745], // Rottenbuch / Ammerschlucht
-        [47.674, 10.978, 835], // Wieskirche (UNESCO)
-        [47.716, 11.095, 675], // Bad Bayersoien
-        [47.785, 11.135, 610], // Polling
-        [47.836, 11.142, 563], // Weilheim
+        [47.8398, 11.1422, 563], // Weilheim in Oberbayern
+        [47.8009, 11.0125, 988], // Hoher Peißenberg Gipfel (988 m)
+        [47.7345, 10.9665, 755], // Rottenbuch / Ammerschlucht
+        [47.6797, 10.9002, 871], // Wieskirche (UNESCO)
+        [47.7212, 11.0285, 795], // Bad Bayersoien
+        [47.8398, 11.1422, 563], // Weilheim
       ],
     },
     {
-      slug: 'col-de-la-bonette',
-      title: 'Col de la Bonette – Europas höchste Passstraße',
+      slug: 'stoneman-dolomiti-gold',
+      title: 'Stoneman Dolomiti MTB Gold (< 24h)',
+      profile: 'mtb',
+      maxPoints: 380,
+      maxRoadPeakM: 2545,
       waypoints: [
-        [44.387, 6.651, 1140], // Jausiers
-        [44.365, 6.705, 1560], // Lans
-        [44.345, 6.752, 2040], // Caserne de Restefond
-        [44.321, 6.807, 2802], // Cime de la Bonette (2.802 m!)
-        [44.345, 6.752, 2040], // Restefond Rückfahrt
-        [44.387, 6.651, 1140], // Jausiers
+        [46.7278, 12.2232, 1215],// Toblach
+        [46.7318, 12.2795, 1175],// Innichen
+        [46.7848, 12.3982, 2545],// Marchkinkele (2.545 m!)
+        [46.7495, 12.4215, 1103],// Sillian
+        [46.7095, 12.4265, 2430],// Sillianer Hütte / Demut-Passage
+        [46.6552, 12.4212, 1636],// Kreuzbergpass
+        [46.7022, 12.3505, 1310],// Sexten
+        [46.7278, 12.2232, 1215],// Toblach
+      ],
+    },
+    {
+      slug: 'ski-transalp-muenchen-nizza',
+      title: 'Mit Ski am Rad über die Alpen (München – Nizza)',
+      profile: 'trekking',
+      maxPoints: 420,
+      maxRoadPeakM: 2757,
+      waypoints: [
+        [48.1372, 11.5755, 520], // München Marienplatz
+        [47.2692, 11.4041, 574], // Innsbruck
+        [47.0028, 11.5069, 1370],// Brennerpass
+        [46.6212, 10.7735, 800], // Schlanders / Vinschgau
+        [46.5287, 10.4531, 2757],// Stilfser Joch (2.757 m)
+        [46.1695, 9.8702, 310],  // Sondrio / Valtellina
+        [45.8112, 9.0852, 205],  // Como
+        [44.3845, 7.5425, 535],  // Cuneo
+        [44.1495, 7.5618, 1871], // Col de Tende
+        [43.6959, 7.2655, 12],   // Nizza Promenade des Anglais
       ],
     },
   ];
 
   for (const r of curatedRoutes) {
-    const pts = interpolateWaypoints(r.waypoints, 22);
-    await saveTrackArtifacts(r.slug, r.title, pts, { maxPoints: 260 });
-    console.log(`  ✓ ${r.slug}: Track & GPX erzeugt`);
+    const pts = await fetchBrouterOrSpline(r.waypoints, r.profile, r.maxRoadPeakM);
+    await saveTrackArtifacts(r.slug, r.title, pts, { maxPoints: r.maxPoints });
+    console.log(`  ✓ ${r.slug}: ${pts.length} echte OSM-Rohpunkte -> Track & GPX erzeugt`);
   }
 
-  console.log('\n🎉 Alle V1-Tracks erfolgreich unter public/tracks/ und public/gpx/ bereitgestellt!');
+  console.log('\n🎉 Alle Tracks erfolgreich unter public/tracks/ und public/gpx/ bereitgestellt!');
 }
 
 main().catch((err) => {

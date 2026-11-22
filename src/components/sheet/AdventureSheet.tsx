@@ -145,7 +145,7 @@ export const AdventureSheet: React.FC<AdventureSheetProps> = ({
       <LiquidGlass
         variant="regular"
         radius={26}
-        opticalLens={isDesktop}
+        opticalLens={isDesktop && !isPlayingVideo}
         className="detail-sheet"
       >
         {/* Mobile/Tablet iOS Draggable Sheet Handle + Header */}
@@ -213,8 +213,15 @@ export const AdventureSheet: React.FC<AdventureSheetProps> = ({
             }
           }}
         >
-          {/* Title & Location */}
-          <div className="sheet-heading">
+          {/* Title & Location (tapping in mobile peek mode also expands cleanly!) */}
+          <div
+            className={`sheet-heading ${!isDesktop && mobileSnap === 'peek' ? 'sheet-heading--peek-tap' : ''}`}
+            onClick={() => {
+              if (!isDesktop && mobileSnap === 'peek') {
+                onChangeMobileSnap('half');
+              }
+            }}
+          >
             <h2 className="sheet-title">{adventure.title}</h2>
             <p className="sheet-subtitle">{adventure.subtitle}</p>
             <div className="sheet-location-line">
@@ -225,20 +232,21 @@ export const AdventureSheet: React.FC<AdventureSheetProps> = ({
             </div>
           </div>
 
-          {/* Mobile Peek Quick-Bar (gives immediate stats & expand button while keeping >52% map visible!) */}
-          <div className="sheet-peek-bar">
-            <span className="sheet-peek-bar__stats">{quickStatLine}</span>
-            <button
-              id="sheet-expand-btn"
-              type="button"
-              className="sheet-peek-bar__expand"
-              onClick={() => onChangeMobileSnap('half')}
-            >
-              <Play size={12} fill="currentColor" />
-              <span>Video & Profil</span>
-              <ChevronUp size={14} />
-            </button>
-          </div>
+          {/* Mobile Peek Quick-Bar: full-width unclippable button with stats + prominent expand CTA */}
+          <button
+            id="sheet-expand-btn"
+            type="button"
+            className="sheet-peek-bar"
+            onClick={() => onChangeMobileSnap('half')}
+            aria-label="Video, Höhenprofil und alle Details ausklappen"
+          >
+            {quickStatLine && <span className="sheet-peek-bar__stats">{quickStatLine}</span>}
+            <span className="sheet-peek-bar__cta">
+              <Play size={13} fill="currentColor" />
+              <span>Video, Höhenprofil & Details</span>
+              <ChevronUp size={16} />
+            </span>
+          </button>
 
           {/* 1-Click Privacy-Clean Inline YouTube Video */}
           <div className="sheet-video-block">

@@ -244,7 +244,7 @@ export async function saveTrackArtifacts(slug, title, coords, { isPreviewOnly = 
 
   // Keep lightweight overview-bundle.json in sync automatically for instant map startup
   if (!slug.includes('-etappe-')) {
-    const bundlePath = path.join( path.dirname(path.join('public/tracks', `${slug}.json`)), 'overview-bundle.json');
+    const bundlePath = path.join(TRACKS_DIR, 'overview-bundle.json');
     let bundle = {};
     try {
       bundle = JSON.parse(await fs.readFile(bundlePath, 'utf8'));

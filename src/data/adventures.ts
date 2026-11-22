@@ -582,7 +582,7 @@ export const ADVENTURES: Adventure[] = [
     difficulty: 'extrem',
     isFavorite: true,
     year: 2026,
-    coordinates: [6.76, 44.342],
+    coordinates: [6.8074, 44.3214],
     zoomLevel: 11.2,
     youtubeId: 'IYcmNxVUUNU',
     youtubeTitle: 'Europe’s Highest Road Climb — How Long Will It Take?',

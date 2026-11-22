@@ -3,10 +3,13 @@
    ========================================================================== */
 
 .app-viewport {
-  position: relative;
-  width: 100vw;
-  height: 100vh;
-  height: 100dvh;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  height: 100svh;
+  height: var(--app-vh, 100svh);
   overflow: hidden;
   user-select: none;
 }
@@ -60,8 +63,8 @@
   padding: 6.5px 14px;
   border-radius: 999px;
   background: rgba(12, 20, 34, 0.76);
-  backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.2);
   color: rgba(255, 255, 255, 0.94);
   font-size: 12px;
@@ -126,8 +129,8 @@
     rgba(20, 32, 52, 0.36) 62%,
     rgba(255, 255, 255, 0.18) 100%
   );
-  backdrop-filter: blur(8px) saturate(200%) brightness(1.08);
   -webkit-backdrop-filter: blur(8px) saturate(200%) brightness(1.08);
+  backdrop-filter: blur(8px) saturate(200%) brightness(1.08);
   box-shadow:
     0 14px 32px rgba(4, 10, 22, 0.42),
     inset 0 2px 2px rgba(255, 255, 255, 0.92),
@@ -324,8 +327,8 @@
   text-overflow: ellipsis;
   color: #ffffff;
   background: rgba(10, 18, 32, 0.78);
-  backdrop-filter: blur(10px) saturate(180%);
   -webkit-backdrop-filter: blur(10px) saturate(180%);
+  backdrop-filter: blur(10px) saturate(180%);
   box-shadow:
     0 6px 16px rgba(4, 10, 22, 0.35),
     inset 0 1px 0.5px rgba(255, 255, 255, 0.45);
@@ -375,8 +378,8 @@
   font-weight: 600;
   color: #ffffff;
   background: rgba(10, 18, 32, 0.88);
-  backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
   box-shadow:
     0 6px 16px rgba(4, 10, 22, 0.38),
     inset 0 1px 0.5px rgba(255, 255, 255, 0.35);
@@ -401,8 +404,8 @@
 .maplibregl-ctrl-attrib.maplibregl-compact {
   margin: 0 10px 8px 0 !important;
   background: rgba(15, 23, 38, 0.58) !important;
-  backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
   color: rgba(255, 255, 255, 0.82) !important;
   border-radius: 999px !important;
 }
@@ -590,15 +593,22 @@
   letter-spacing: -0.028em;
   line-height: 1.12;
   color: var(--ink-primary);
+  text-shadow: 0 1px 6px rgba(4, 10, 22, 0.55);
   white-space: nowrap;
 }
 
 .brand-subtitle {
   margin: 2px 0 0;
   font-size: 11.5px;
-  font-weight: 550;
+  font-weight: 600;
   color: var(--ink-secondary);
+  text-shadow: 0 1px 6px rgba(4, 10, 22, 0.65);
   white-space: nowrap;
+}
+
+[data-map-theme='topo'] .brand-title,
+[data-map-theme='topo'] .brand-subtitle {
+  text-shadow: none;
 }
 
 .top-bar-divider {
@@ -801,7 +811,7 @@
   flex-shrink: 0;
 }
 
-.region-chip-glass--active {
+.region-chip-glass--active > .lg-backdrop {
   background: var(--glass-pill-active-bg) !important;
 }
 
@@ -809,7 +819,7 @@
   color: var(--glass-pill-active-ink);
 }
 
-.region-chip-glass--fav-active {
+.region-chip-glass--fav-active > .lg-backdrop {
   background: linear-gradient(135deg, rgba(251, 191, 36, 0.95), rgba(245, 158, 11, 0.9)) !important;
 }
 
@@ -834,12 +844,12 @@
 /* Context-Sensitive Filter Popover */
 .filter-popover {
   width: min(510px, calc(100vw - 24px));
-  max-height: calc(100dvh - 110px);
-  overflow-y: auto;
   pointer-events: auto;
 }
 
-.filter-popover .lg-content {
+.filter-popover > .lg-content {
+  max-height: calc(var(--app-vh, 100svh) - 108px);
+  overflow-y: auto;
   padding: 18px 20px;
   display: flex;
   flex-direction: column;
@@ -1163,13 +1173,14 @@
 .detail-sheet {
   width: 100%;
   height: 100%;
-  overflow: hidden;
 }
 
 .detail-sheet > .lg-content {
   display: flex;
   flex-direction: column;
   height: 100%;
+  overflow: hidden;
+  border-radius: inherit;
 }
 
 .sheet-drag-zone {
@@ -1959,24 +1970,52 @@
     top: auto;
     left: 50%;
     right: auto;
-    bottom: var(--safe-bottom);
+    bottom: max(12px, env(safe-area-inset-bottom, 12px));
     transform: translateX(-50%);
     width: min(540px, calc(100vw - 24px));
-    height: 48dvh;
-    transition: height 320ms var(--ease-spring);
+    height: calc(var(--app-vh, 100svh) * 0.52);
+    transition: height 300ms var(--ease-spring);
     animation: sheetRiseCentered 300ms var(--ease-spring);
   }
 
+  /* Content-hugging auto height in 'peek' guarantees the Video & Profil button is NEVER clipped! */
   .detail-sheet-wrap--peek {
-    height: 35dvh;
+    height: auto;
+    max-height: calc(var(--app-vh, 100svh) - 116px);
+  }
+
+  .detail-sheet-wrap--peek .detail-sheet,
+  .detail-sheet-wrap--peek .detail-sheet > .lg-content {
+    height: auto;
+  }
+
+  .detail-sheet-wrap--peek .sheet-scroll-body {
+    flex: none;
+    overflow: visible;
+    padding-bottom: 16px;
+  }
+
+  .detail-sheet-wrap--peek .sheet-scroll-body > :nth-child(n + 3) {
+    display: none;
+  }
+
+  .detail-sheet-wrap--peek .sheet-subtitle {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .sheet-heading--peek-tap {
+    cursor: pointer;
   }
 
   .detail-sheet-wrap--half {
-    height: 62dvh;
+    height: calc(var(--app-vh, 100svh) * 0.64);
   }
 
   .detail-sheet-wrap--full {
-    height: 88dvh;
+    height: calc(var(--app-vh, 100svh) * 0.88);
   }
 
   @keyframes sheetRiseCentered {
@@ -1990,11 +2029,11 @@
     }
   }
 
-  /* Calmer Sheet Backing so colorful pins behind never disturb text legibility */
-  .detail-sheet.lg-surface--regular {
+  /* Calmer Sheet Backing on .lg-backdrop so colorful pins behind never disturb text legibility */
+  .detail-sheet.lg-surface--regular > .lg-backdrop {
     background: var(--glass-fill-sheet-mobile);
-    backdrop-filter: blur(24px) saturate(200%) brightness(1.03);
     -webkit-backdrop-filter: blur(24px) saturate(200%) brightness(1.03);
+    backdrop-filter: blur(24px) saturate(200%) brightness(1.03);
   }
 
   .sheet-grabber-area {
@@ -2020,41 +2059,50 @@
     padding: 8px 15px 10px;
   }
 
-  /* Peek Quick-Bar shown in compact 'peek' snap so user immediately sees stats & expand button */
+  /* Full-Width Unclippable Peek Action Card (stats row + 42px full-width expand pill) */
   .detail-sheet-wrap--peek .sheet-peek-bar {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    padding: 9px 12px;
-    border-radius: 14px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    width: 100%;
+    padding: 9px 10px;
+    border-radius: 16px;
     background: var(--glass-subcard-bg);
     border: 1px solid var(--glass-subcard-border);
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+
+  .detail-sheet-wrap--peek .sheet-peek-bar:active {
+    transform: scale(0.985);
   }
 
   .sheet-peek-bar__stats {
     font-family: var(--font-mono);
     font-size: 11.5px;
     font-weight: 600;
+    line-height: 1.32;
     color: var(--ink-primary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    text-align: center;
   }
 
-  .sheet-peek-bar__expand {
-    flex-shrink: 0;
-    border: none;
-    border-radius: 999px;
-    padding: 6.5px 12px;
+  .sheet-peek-bar__cta {
+    width: 100%;
+    min-height: 42px;
+    border-radius: 12px;
+    padding: 8px 14px;
     background: var(--season-accent);
     color: #ffffff;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 750;
-    display: inline-flex;
+    display: flex;
     align-items: center;
-    gap: 5px;
-    cursor: pointer;
+    justify-content: center;
+    gap: 7px;
+    box-shadow:
+      0 6px 16px -4px rgba(0, 0, 0, 0.35),
+      inset 0 1px 0.5px rgba(255, 255, 255, 0.42);
   }
 }
 
@@ -2307,35 +2355,27 @@
     font-size: 11.5px;
   }
 
-  /* Full-Width 3-Snap iOS Bottom Sheet on Smartphone */
+  /* Full-Width 3-Snap iOS Bottom Sheet on Smartphone (safe above bottom browser address bars!) */
   .detail-sheet-wrap {
     left: 8px;
     right: 8px;
-    bottom: max(8px, env(safe-area-inset-bottom, 8px));
+    bottom: max(12px, env(safe-area-inset-bottom, 12px));
     transform: none;
     width: auto;
     animation: sheetRiseMobile 280ms var(--ease-spring);
   }
 
   .detail-sheet-wrap--peek {
-    height: 248px;
-  }
-
-  .detail-sheet-wrap--peek .sheet-scroll-body {
-    overflow: hidden;
-    padding-bottom: 14px;
-  }
-
-  .detail-sheet-wrap--peek .sheet-scroll-body > :nth-child(n + 3) {
-    display: none;
+    height: auto;
+    max-height: calc(var(--app-vh, 100svh) - 112px);
   }
 
   .detail-sheet-wrap--half {
-    height: 64dvh;
+    height: calc(var(--app-vh, 100svh) * 0.65);
   }
 
   .detail-sheet-wrap--full {
-    height: 90dvh;
+    height: calc(var(--app-vh, 100svh) * 0.88);
   }
 
   /* Keep collapsed ⓘ attribution neatly above the mobile Discovery Dock */
@@ -2365,8 +2405,14 @@
     gap: 13px;
   }
 
+  .detail-sheet-wrap--peek .sheet-scroll-body {
+    overflow: visible;
+    padding: 11px 14px 16px;
+    gap: 11px;
+  }
+
   .sheet-title {
-    font-size: 18.5px;
+    font-size: 18px;
   }
 
   .cta-row {

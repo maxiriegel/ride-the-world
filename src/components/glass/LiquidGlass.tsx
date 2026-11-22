@@ -137,7 +137,7 @@ export const LiquidGlass: React.FC<LiquidGlassProps> = ({
 
   const scale = refractionScale ?? (variant === 'clear' ? 50 : 38);
   const bezelPx = variant === 'clear' ? 28 : 34;
-  const preBlurStdDev = variant === 'clear' ? 1.15 : 6.0;
+  const preBlurStdDev = variant === 'clear' ? 2.8 : 6.0;
 
   useEffect(() => {
     if (!useLens || !containerRef.current) return;
@@ -179,19 +179,23 @@ export const LiquidGlass: React.FC<LiquidGlassProps> = ({
     onPointerMove?.(e);
   };
 
-  const backdropStyle: React.CSSProperties = useMemo(() => {
-    const base: React.CSSProperties = {
+  const surfaceStyle: React.CSSProperties = useMemo(
+    () => ({
       ['--lg-radius' as string]: `${radius}px`,
       ...style,
+    }),
+    [radius, style]
+  );
+
+  const backdropStyle: React.CSSProperties | undefined = useMemo(() => {
+    if (!(useLens && lensUrl)) return undefined;
+    const satPct = variant === 'clear' ? 195 : 190;
+    const filterVal = `url(#${filterId}) saturate(${satPct}%) contrast(1.06) brightness(1.04)`;
+    return {
+      backdropFilter: filterVal,
+      WebkitBackdropFilter: filterVal,
     };
-    if (useLens && lensUrl) {
-      const satPct = variant === 'clear' ? 195 : 190;
-      const filterVal = `url(#${filterId}) saturate(${satPct}%) contrast(1.06) brightness(1.04)`;
-      base.backdropFilter = filterVal;
-      base.WebkitBackdropFilter = filterVal;
-    }
-    return base;
-  }, [useLens, lensUrl, radius, style, variant, filterId]);
+  }, [useLens, lensUrl, variant, filterId]);
 
   const Component = Tag as React.ElementType;
   const scaleWarm = Number((scale * 0.95).toFixed(1));
@@ -201,10 +205,12 @@ export const LiquidGlass: React.FC<LiquidGlassProps> = ({
     <Component
       ref={containerRef}
       className={`lg-surface lg-surface--${variant} ${!(useLens && lensUrl) ? 'lg-surface--fallback' : ''} ${interactive ? 'lg-surface--interactive' : ''} ${className}`}
-      style={backdropStyle}
+      style={surfaceStyle}
       onPointerMove={handlePointerMove}
       {...rest}
     >
+      {/* Dedicated childless backdrop layer prevents Chromium OOPIF compositor blur on child iframes/videos */}
+      <div className="lg-backdrop" aria-hidden="true" style={backdropStyle} />
       {useLens && lensUrl && (
         <svg
           aria-hidden="true"

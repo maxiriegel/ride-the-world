@@ -749,21 +749,25 @@ export const TopoMap: React.FC<TopoMapProps> = ({
   // Compute responsive camera padding for Phone (peek/half/full), Tablet Portrait, Tablet Landscape & Desktop
   const computeCameraPadding = useCallback(() => {
     const vw = window.innerWidth;
-    const vh = window.innerHeight;
+    const vv = window.visualViewport;
+    const vh =
+      vv && (!vv.scale || vv.scale <= 1.05)
+        ? Math.min(window.innerHeight, vv.height)
+        : window.innerHeight;
 
     if (vw < 640) {
       const sheetFrac = !isSheetOpen
-        ? 0.16
+        ? 0.17
         : mobileSnap === 'peek'
-          ? 0.36
+          ? 0.41
           : mobileSnap === 'half'
-            ? 0.61
-            : 0.65;
+            ? 0.64
+            : 0.68;
       return {
-        top: 106,
+        top: 104,
         bottom: Math.round(vh * sheetFrac) + 18,
-        left: 26,
-        right: 26,
+        left: 24,
+        right: 24,
       };
     }
 
@@ -771,7 +775,7 @@ export const TopoMap: React.FC<TopoMapProps> = ({
       // Tablet Portrait: centered bottom sheet
       return {
         top: 112,
-        bottom: isSheetOpen ? Math.round(vh * 0.48) + 20 : 105,
+        bottom: isSheetOpen ? Math.round(vh * 0.44) + 20 : 105,
         left: 44,
         right: 44,
       };
