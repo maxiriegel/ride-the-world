@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * Ride the World — Auto-Importer für Komoot-URLs, lokale .gpx-Dateien & YouTube-Metadaten
+ * Ride the World — Auto-Importer for Komoot URLs, local .gpx files & YouTube metadata
  *
- * Beispiele:
+ * Examples:
  *   node scripts/import-tour.mjs --komoot https://www.komoot.com/de-de/tour/380812878 --slug muenchen-orbit --youtube https://www.youtube.com/watch?v=oBe_vZ9lKuE
- *   node scripts/import-tour.mjs --gpx ./public/gpx-raw/meine-tour.gpx --slug meine-tour --shop-preview
+ *   node scripts/import-tour.mjs --gpx ./public/gpx-raw/my-tour.gpx --slug my-tour --shop-preview
  */
 
 import fs from 'node:fs/promises';
@@ -148,7 +148,7 @@ export async function parseGpxFile(filePath) {
 /** Fetch public Komoot tour data from public tour URL or ID */
 export async function fetchKomootTour(urlOrId) {
   const idMatch = String(urlOrId).match(/([0-9]{6,14})/);
-  if (!idMatch) throw new Error(`Ungültige Komoot-Tour-ID oder URL: ${urlOrId}`);
+  if (!idMatch) throw new Error(`Invalid Komoot tour ID or URL: ${urlOrId}`);
   const tourId = idMatch[1];
   const url = `https://www.komoot.com/de-de/tour/${tourId}`;
   const res = await fetch(url, {
@@ -157,14 +157,14 @@ export async function fetchKomootTour(urlOrId) {
       'Accept-Language': 'de-DE,de;q=0.9,en;q=0.8',
     },
   });
-  if (!res.ok) throw new Error(`Komoot HTTP ${res.status} für Tour ${tourId}`);
+  if (!res.ok) throw new Error(`Komoot HTTP ${res.status} for tour ${tourId}`);
   const html = await res.text();
   const bootMatch = html.match(/kmtBoot\.setProps\("((?:\\.|[^"])*)"\)/);
-  if (!bootMatch) throw new Error(`Kein öffentliches kmtBoot-Payload auf ${url} gefunden.`);
+  if (!bootMatch) throw new Error(`No public kmtBoot payload found on ${url}.`);
   const unescaped = JSON.parse(`"${bootMatch[1]}"`);
   const data = JSON.parse(unescaped);
   const tour = data?.page?._embedded?.tour;
-  if (!tour) throw new Error(`Tour ${tourId} ist nicht öffentlich lesbar.`);
+  if (!tour) throw new Error(`Tour ${tourId} is not publicly readable.`);
 
   const coords = tour?._embedded?.coordinates?.items ?? [];
   const rawSurfaces = tour?._embedded?.surfaces?.items ?? [];
@@ -293,7 +293,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
 
   if (!slug || (!komootArg && !gpxArg)) {
     console.log(
-      'Nutzung:\n  node scripts/import-tour.mjs --komoot <url|id> --slug <slug> [--youtube <url|id>] [--shop-preview]\n  node scripts/import-tour.mjs --gpx <pfad.gpx> --slug <slug> [--youtube <url|id>] [--shop-preview]'
+      'Usage:\n  node scripts/import-tour.mjs --komoot <url|id> --slug <slug> [--youtube <url|id>] [--shop-preview]\n  node scripts/import-tour.mjs --gpx <path.gpx> --slug <slug> [--youtube <url|id>] [--shop-preview]'
     );
     process.exit(0);
   }
@@ -308,7 +308,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     slug,
     title: parsed.title,
     coordinates: saved.startCoordinate,
-    youtubeId: yt?.youtubeId ?? 'YOUTUBE_ID_HIER',
+    youtubeId: yt?.youtubeId ?? 'YOUTUBE_ID_HERE',
     youtubeTitle: yt?.title || parsed.title,
     accessType: isPreviewOnly ? 'shop-pack' : 'free',
     ...(parsed.komootUrl && !isPreviewOnly ? { komootUrl: parsed.komootUrl } : {}),
@@ -324,9 +324,9 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     },
   };
 
-  console.log('\n✅ Track erfolgreich verarbeitet & gespeichert!');
-  console.log('   Track-JSON:', saved.trackFile);
-  if (saved.gpxDownloadUrl) console.log('   GPX-Datei: ', saved.gpxDownloadUrl);
-  console.log('\n📋 Fertiger Daten-Eintrag für src/data/adventures.ts:\n');
+  console.log('\n✅ Track processed and saved successfully!');
+  console.log('   Track JSON:', saved.trackFile);
+  if (saved.gpxDownloadUrl) console.log('   GPX file:  ', saved.gpxDownloadUrl);
+  console.log('\n📋 Ready-to-paste data entry for src/data/adventures.ts:\n');
   console.log(JSON.stringify(snippet, null, 2));
 }

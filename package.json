@@ -1,5 +1,7 @@
 {
   "name": "ride-the-world",
+  "description": "Interactive cycling and skiing world map for Marius Quast with Apple Liquid Glass UI",
+  "homepage": "https://maxiriegel.github.io/ride-the-world/",
   "private": true,
   "version": "0.0.0",
   "type": "module",

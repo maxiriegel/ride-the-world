@@ -2,7 +2,7 @@ import type { Adventure } from '../types/adventure';
 
 export const ADVENTURES: Adventure[] = [
   // =========================================================================
-  // MEHRTAGESTOUREN & BIKEPACKING-CROSSES (SOMMER / BIKE)
+  // MULTI-DAY BIKEPACKING & ALPINE CROSSES (SUMMER / BIKE)
   // =========================================================================
   {
     slug: 'quast-route',
@@ -272,7 +272,7 @@ export const ADVENTURES: Adventure[] = [
   },
 
   // =========================================================================
-  // TAGESTOUREN, PÄSSE & CHALLENGES (SOMMER / BIKE)
+  // DAY RIDES, MOUNTAIN PASSES & CHALLENGES (SUMMER / BIKE)
   // =========================================================================
   {
     slug: 'stoneman-dolomiti-gold',
@@ -607,7 +607,7 @@ export const ADVENTURES: Adventure[] = [
   },
 
   // =========================================================================
-  // SKIGEBIETE & SKI-CHALLENGES WELTWEIT (WINTER / SKI)
+  // WORLDWIDE SKI RESORTS & SKI CHALLENGES (WINTER / SKI)
   // =========================================================================
   {
     slug: 'jackson-hole-corbets',
@@ -794,7 +794,7 @@ export const ADVENTURES: Adventure[] = [
   },
 
   // =========================================================================
-  // SKIGEBIETE & SKI-CHALLENGES ALPEN / DACH (WINTER / SKI)
+  // ALPS / DACH SKI RESORTS & SKI CHALLENGES (WINTER / SKI)
   // =========================================================================
   {
     slug: 'ski-arlberg',
